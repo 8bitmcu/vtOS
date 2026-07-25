@@ -1,4 +1,4 @@
-# vtOs: A terminal-based hobby firmware
+# vtOS: A terminal-based hobby firmware
 
 This project features first-class support for the [LILYGO T-Deck](https://s.click.aliexpress.com/e/_c4agv9Wd), transforming it into a standalone portable terminal.
 
@@ -93,6 +93,7 @@ You can execute the following commands from the built-in shell:
 | `rec` | Audio recorder |
 | `rss` | RSS Reader; connect to a RSS url to retreive the articles |
 | `sftp` | SFTP Client that mounts its content as a VFS |
+| `sftpd` | SFTP Server; runs in the background |
 | `ssh` | SSH Client; connect to a remote ssh server |
 | `sshd` | SSH Server; runs in the background |
 | `telnet` | Connects to a telnet server |

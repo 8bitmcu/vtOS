@@ -1,15 +1,16 @@
 # Create an INTERFACE library for our C module.
 add_library(usermod_modssh INTERFACE)
 
-# Add our source files to the lib. modsshd.c (the SSH server) and
-# modsftp.c (the SFTP client), each registered as their own module --
-# see their header comments -- live here too rather than in separate
-# modules so they pick up all the wolfSSH vendor patches below
-# automatically.
+# Add our source files to the lib. modsshd.c (the SSH server),
+# modsftp.c (the SFTP client), and modsftpd.c (the SFTP server), each
+# registered as their own module -- see their header comments -- live
+# here too rather than in separate modules so they pick up all the
+# wolfSSH vendor patches below automatically.
 target_sources(usermod_modssh INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/modssh.c
     ${CMAKE_CURRENT_LIST_DIR}/modsshd.c
-    ${CMAKE_CURRENT_LIST_DIR}/modsftp.c)
+    ${CMAKE_CURRENT_LIST_DIR}/modsftp.c
+    ${CMAKE_CURRENT_LIST_DIR}/modsftpd.c)
 
 # Add the current directory as an include directory, plus tdeck_i2s for
 # the shared ring_buf.h (same cross-task producer/consumer buffer already
@@ -156,6 +157,102 @@ execute_process(
         ${wolfssh_dir}
 )
 
+# modsftpd.c (the SFTP server) needs wolfSSH's own server-side SFTP
+# Recv* handlers to call into MicroPython's real VFS, not a real
+# on-target POSIX filesystem (there isn't one -- see modsftpd.c's
+# header comment). wolfssh/port.h supports exactly this via
+# WOLFSSH_USER_FILESYSTEM, which -- confirmed directly -- has its own
+# dedicated `#elif defined(WOLFSSH_USER_FILESYSTEM)` branch in BOTH of
+# the file-I/O macro chains the patches above target (the WFOPEN-family
+# one and the WFD/WDIR-family one), each just `#include "myFilesystem.h"`.
+# Since an #elif chain only ever selects its first matching branch, this
+# preempts the generic-POSIX branch the patches above unlock -- meaning
+# those patches become dormant/unused now (harmless: the client's own
+# code never touches these macros either way, confirmed when they were
+# first added, so nothing regresses either directly using or continuing
+# past them).
+#
+# myFilesystem.h (modules/modssh/myFilesystem.h) is found via a plain
+# "" include -- needs modules/modssh/ on wolfssh_lib's OWN include
+# path, not just usermod_modssh's (this file's existing
+# target_include_directories(usermod_modssh ...) calls only cover our
+# own compilation units, not wolfssh_lib's, since port.h is compiled as
+# part of that separate component library).
+target_compile_definitions(${wolfssh_lib} PRIVATE WOLFSSH_USER_FILESYSTEM)
+target_include_directories(${wolfssh_lib} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+
+# modsftpd.c itself also needs WOLFSSH_USER_FILESYSTEM -- confirmed via
+# an actual build that skipping this was a real bug, not just belt and
+# suspenders: modsftpd.c is compiled as part of usermod_modssh/usermod,
+# a *different* CMake target from wolfssh_lib, so it doesn't inherit
+# wolfssh_lib's PRIVATE define above. Without it, modsftpd.c's own
+# `#include <wolfssh/ssh.h>` pulls in port.h for the first time (within
+# that translation unit) with WOLFSSH_USER_FILESYSTEM invisible, so
+# port.h takes the generic real-POSIX branch instead (defining real
+# fopen/chmod/WFILE=FILE/etc) -- and modsftpd.c's own later
+# `#include "myFilesystem.h"` then redefines everything a second time,
+# which is how `typedef int WFILE;` ended up colliding with the real
+# FILE typedef. usermod_modssh is INTERFACE-only, so this INTERFACE
+# define propagates to its sources (this one and its siblings, though
+# only modsftpd.c cares) via the target_link_libraries(usermod
+# INTERFACE usermod_modssh) call at the bottom of this file.
+target_compile_definitions(usermod_modssh INTERFACE WOLFSSH_USER_FILESYSTEM)
+
+# wolfSSH_SFTP_accept()'s SFTP_BEGIN/SFTP_EXT case wipes all SFTP receive
+# state (wolfSSH_SFTP_ClearState(ssh, STATE_ID_ALL)) on ANY non-success
+# return from SFTP_ServerRecvInit() except WS_WANT_READ/WS_WANT_WRITE --
+# WS_CHAN_RXD ("channel data received", a normal transient status, not a
+# fault -- see wolfssh/error.h) isn't exempted. Confirmed the hard way:
+# a real SFTP client's INIT packet reliably triggers WS_CHAN_RXD at least
+# once, and every time it does, this clears state and restarts
+# SFTP_ServerRecvInit() from scratch -- forever, since the restart hits
+# the exact same WS_CHAN_RXD again before ever accumulating a complete
+# packet. This is the server-side counterpart of a bug wolfSSH's own
+# v1.4.21 fixed on the *client* side (SFTP_ClientRecvInit(), PR 846,
+# "SFTP fix for init to handle channel data") -- our vendored 1.4.20
+# predates that fix, and it was never applied to this server-side
+# function (a much less exercised code path). Python string replace, not
+# sed -- see patch_wolfssh_sftp_filesystem.py's header comment for why
+# (the replacement text itself contains && here, which sed's s///
+# replacement syntax would misinterpret as "insert matched text").
+execute_process(
+    COMMAND python3
+        ${CMAKE_CURRENT_LIST_DIR}/patch_wolfssh_sftp_accept_chan_rxd.py
+        ${wolfssh_dir}
+)
+
+# wolfSSH_SFTP_read()'s STATE_RECV_DO case (the per-message read loop, not
+# the one-time init handled above) has the exact same "doesn't exempt
+# WS_CHAN_RXD" bug -- but here it desyncs the channel's read cursor from
+# wolfSSH's own SFTP parsing state, since the header has already been
+# consumed by the time the payload read fails: a retry restarts from
+# STATE_RECV_READ and misparses payload bytes as a new header, producing a
+# bogus declared length that gets passed straight to WMALLOC(), which fails
+# with WS_MEMORY_E. Confirmed against a real device: reproducible on any
+# upload whose WRITE payload needs more than one channel-data delivery to
+# fully arrive (small files that land in a single delivery never hit this).
+# See patch_wolfssh_sftp_read_chan_rxd.py for the full trace.
+execute_process(
+    COMMAND python3
+        ${CMAKE_CURRENT_LIST_DIR}/patch_wolfssh_sftp_read_chan_rxd.py
+        ${wolfssh_dir}
+)
+
+# src/wolfsftp.c's SFTP_CreateLongName() tests file type via raw bit
+# overlap (`tmp & FILEATRB_PER_LINK`) instead of masking to the type
+# field and comparing exactly -- FILEATRB_PER_LINK (0120000) shares a
+# bit with FILEATRB_PER_FILE (0100000), so every plain regular file
+# (mode 0100000, exactly what MicroPython's os.stat() returns for a
+# file with no extra permission bits) spuriously matches the symlink
+# check and gets shown as 'l-------' in the longname string SFTP-v3
+# clients like FileZilla display for their permission column. Confirmed
+# against a real device. See patch_wolfssh_longname_type_bits.py.
+execute_process(
+    COMMAND python3
+        ${CMAKE_CURRENT_LIST_DIR}/patch_wolfssh_longname_type_bits.py
+        ${wolfssh_dir}
+)
+
 # wolfssl/wolfcrypt/settings.h (via port/Espressif/esp-sdk-lib.h) hard
 # #errors unless WOLFSSL_USER_SETTINGS is defined -- neither component's
 # own build defines this for itself, only (maybe) for dependents, so
@@ -165,6 +262,69 @@ execute_process(
 # just ours.
 target_compile_definitions(${wolfssl_lib} PUBLIC WOLFSSL_USER_SETTINGS)
 target_compile_definitions(${wolfssh_lib} PUBLIC WOLFSSL_USER_SETTINGS)
+
+# wolfssl/wolfcrypt/settings.h's own FREERTOS/WOLFSSL_ESPIDF block
+# (confirmed directly against the vendored source, ~line 1487) unconditionally
+# defines XMALLOC/XFREE/XREALLOC as pvPortMalloc()/vPortFree()/realloc() --
+# and on this board, that only ever draws from internal SRAM, which is tight
+# enough under normal SFTP session load (confirmed on a real device: ~42KB
+# free, ~22KB largest contiguous block, mid-session) that a single WMALLOC()
+# for one large incoming SFTP WRITE message (~32KB, matching
+# WOLFSSH_MAX_SFTP_RW) reliably fails with WS_MEMORY_E, even though 8MB of
+# PSRAM sits idle right next to it. (Two independent large-buffer WMALLOC()
+# sites were found failing this way: wolfsftp.c's own SFTP message buffer,
+# and internal.c's GrowBuffer() for the raw SSH channel-data packet
+# underneath it -- fixing the allocator itself, not each call site, is what
+# covers both.)
+#
+# settings.h's block only steps aside for XMALLOC_USER (not the
+# XMALLOC_OVERRIDE mechanism most other embedded ports use, which is checked
+# later in wolfcrypt/types.h -- too late, settings.h's own definitions have
+# already won by then). XMALLOC_USER requires real extern function
+# definitions matching exact signatures, not macros -- see
+# wolfssl_shim/psram_alloc.c, added to wolfssl_lib's own sources below so it
+# links into the same component. Applied to both libs since wolfssh_lib's
+# own source (wolfsftp.c, internal.c) references the same three symbols.
+target_compile_definitions(${wolfssl_lib} PRIVATE XMALLOC_USER)
+target_compile_definitions(${wolfssh_lib} PRIVATE XMALLOC_USER)
+target_sources(${wolfssl_lib} PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/wolfssl_shim/psram_alloc.c
+)
+
+# Cleanup for an earlier, broken attempt at the fix above (see
+# patch_wolfssl_psram_alloc.py) that appended a now-removed block directly
+# to user_settings.h -- harmless/no-op once a build has picked up the
+# removal, kept only so a component cache that already has the old,
+# broken append self-heals on the next build without needing a manual
+# cache clear.
+execute_process(
+    COMMAND python3
+        ${CMAKE_CURRENT_LIST_DIR}/patch_wolfssl_psram_alloc.py
+        ${wolfssl_dir}
+)
+
+# wolfssl__wolfssl's vendored user_settings.h caps DEFAULT_WINDOW_SZ at
+# 2000 bytes inside its ESP_ENABLE_WOLFSSH block -- an Espressif-example
+# default ("The default SSH Windows size is massive for an embedded
+# target. Limit it:"), not something chosen for this project's own SFTP
+# use case. Confirmed as the root cause of multi-MB SFTP upload hangs on
+# a real device: a temporary diagnostic accessor for the channel's
+# receive window showed it cycling in the ~200-2000 byte range throughout
+# a transfer. A single 32768-byte SFTP WRITE (WOLFSSH_MAX_SFTP_RW) needs
+# roughly 16 WINDOW_ADJUST round-trips to get through at that size; a multi-MB
+# upload needs thousands, and wolfSSH's own window-replenish trigger
+# (_UpdateChannelWindow(), src/ssh.c) only fires once the window's
+# already nearly/fully exhausted -- living permanently at that edge makes
+# eventually missing one close to certain. Raises it back to wolfSSH's
+# own upstream default (128KB) -- comfortably affordable now that WMALLOC
+# routes through PSRAM (see psram_alloc.c above), which is what backs the
+# channel inputBuffer this window size sizes. See
+# patch_wolfssl_window_sz.py for the full trace.
+execute_process(
+    COMMAND python3
+        ${CMAKE_CURRENT_LIST_DIR}/patch_wolfssl_window_sz.py
+        ${wolfssl_dir}
+)
 
 # wolfSSL's fast-math bignum backend (wolfcrypt/src/tfm.c) exports a
 # global `mp_init(mp_int *)` -- pure coincidence of naming convention

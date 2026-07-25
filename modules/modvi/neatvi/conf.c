@@ -38,14 +38,14 @@ static int conf_hldefs[384] = {
 	['^'] = SYN_BGMK(11),	/* current line highlight (hll option) */
 	['~'] = SYN_RV,		/* text in reverse direction */
 	['&'] = 4,		/* mapped characters (mc command) */
-	[','] = SYN_BD | 4,	/* lines after EOF */
+	[','] = 0 | 252,	/* lines after EOF */
 	/* for programming languages  */
 	// Bumped to bold and/or the bright palette (8-15, rendered via the
 	// 256-color escape in modvi_term.c's term_seqattr) across the board
 	// here: plain, non-bold ANSI colors (esp. blue=4) read as too dim
 	// against this device's black background. Hues are unchanged from
 	// upstream, only made higher-contrast.
-	['k'] = SYN_BD | 3,	/* general keywords */
+	['k'] = SYN_BD | 178,	/* general keywords -- muted cube gold (256-color) */
 	['r'] = SYN_BD | 2,	/* control flow keywords */
 	['o'] = SYN_BD | 3,	/* operators */
 	['p'] = SYN_BD | 2,	/* preprocessor directives */
@@ -53,12 +53,12 @@ static int conf_hldefs[384] = {
 	['m'] = SYN_BD | 12,	/* imported packages */
 	['t'] = SYN_BD | 3,	/* built-in types and values */
 	['b'] = SYN_BD | 3,	/* built-in functions */
-	['c'] = SYN_IT | 10,	/* comments -- green, not blue: low legibility on black */
+	['c'] = SYN_IT | 71,	/* comments -- muted cube green (256-color), softer than 10 */
 	['d'] = SYN_BD | 12,	/* top-level definitions */
 	['f'] = SYN_BD,		/* called functions */
 	['0'] = 5,		/* numerical constants */
 	['h'] = 5,		/* character constants */
-	['s'] = 5,		/* string literals */
+	['s'] = 216,		/* string literals -- cube warm peach (256-color) */
 	['v'] = SYN_BD | 3,	/* macros */
 	['i'] = 0,		/* identifiers */
 	['x'] = SYN_BD | 6,	/* identifier context */
@@ -120,6 +120,72 @@ static int conf_hldefs[384] = {
 	[SM('R')] = 5,		/* message from */
 	[SM('U')] = 5,		/* message subject */
 };
+
+/* Compile-time truecolor overrides for conf_hldefs[] above. conf_hldefs
+ * itself can't hold a #RRGGBB-style literal directly: it's a plain static
+ * initializer, and resolving a hex triple into a real slot means calling
+ * syn_tcslot() (see syn.c), which is a function call and so isn't a valid
+ * constant expression in C. Instead, list overrides here by conf_hldefs
+ * index (the same 'x'/SX()/SM() ids used above) and an 0xRRGGBB literal
+ * (which *is* a compile-time constant -- only the syn_tcslot() call
+ * itself is deferred), and conf_hltcinit() patches them into conf_hldefs
+ * once, at startup (called from syn_init(), before any highlighting
+ * runs). -1 for fgrgb/bgrgb means "no truecolor override for that
+ * channel" -- use plain conf_hldefs[] entries above for anything that
+ * only needs the existing 256-color palette.
+ *
+ * Example: a true-orange keyword highlight, bold, background unchanged:
+ *   {'k', SYN_BD, 0xff8000, -1},
+ */
+static const struct conf_tcdef {
+	int idx;
+	int extra;
+	long fgrgb;
+	long bgrgb;
+} conf_tcdefs[] = {
+	/* Gruvbox Dark (morhetz/gruvbox), bright variants -- the plain/dark
+	 * row reads too dim against this device's black background (same
+	 * reasoning as the earlier 256-color bump). 'i' (identifiers) is
+	 * deliberately absent: Gruvbox leaves plain text unstyled. */
+	{'k', SYN_BD, 0xfe8019, -1},	/* general keywords -- orange */
+	{'r', SYN_BD, 0xfb4934, -1},	/* control flow -- bright red */
+	{'o', 0,      0xfe8019, -1},	/* operators -- orange */
+	{'p', SYN_BD, 0x8ec07c, -1},	/* preprocessor directives -- bright aqua */
+	{'n', SYN_BD, 0x8ec07c, -1},	/* include directives -- bright aqua */
+	{'m', SYN_BD, 0x8ec07c, -1},	/* imported packages -- bright aqua */
+	{'t', SYN_BD, 0xfabd2f, -1},	/* built-in types -- bright yellow */
+	{'b', 0,      0xfabd2f, -1},	/* built-in functions -- bright yellow */
+	{'c', 0,      0x928374, -1},	/* comments -- gray */
+	{'d', SYN_BD, 0xb8bb26, -1},	/* top-level definitions -- bright green */
+	{'f', SYN_BD, 0xb8bb26, -1},	/* called functions -- bright green */
+	{'0', 0,      0xd3869b, -1},	/* numerical constants -- bright purple */
+	{'h', 0,      0xd3869b, -1},	/* character constants -- bright purple */
+	{'s', 0,      0xb8bb26, -1},	/* string literals -- bright green */
+	{'v', SYN_BD, 0xfabd2f, -1},	/* macros -- bright yellow */
+	{'x', SYN_BD, 0x83a598, -1},	/* identifier context -- bright blue */
+};
+
+void conf_hltcinit(void)
+{
+	int i;
+	for (i = 0; i < LEN(conf_tcdefs); i++) {
+		int mode = conf_tcdefs[i].extra;
+		if (conf_tcdefs[i].fgrgb >= 0) {
+			long rgb = conf_tcdefs[i].fgrgb;
+			int slot = syn_tcslot((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+			if (slot >= 0)
+				mode |= SYN_FGTC | SYN_FGMK(slot);
+		}
+		if (conf_tcdefs[i].bgrgb >= 0) {
+			long rgb = conf_tcdefs[i].bgrgb;
+			int slot = syn_tcslot((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+			if (slot >= 0)
+				mode |= SYN_BGTC | SYN_BGMK(slot);
+		}
+		if (conf_tcdefs[i].idx >= 0 && conf_tcdefs[i].idx < LEN(conf_hldefs))
+			conf_hldefs[conf_tcdefs[i].idx] = mode;
+	}
+}
 
 int conf_hlnum(char *name)
 {

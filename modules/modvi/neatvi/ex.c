@@ -952,6 +952,65 @@ static char *ex_skip(char **arg)
 	return beg;
 }
 
+static int ex_hexval(int c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+/* Parse a truecolor token as either "#RRGGBB" or "R,G,B" into *r/*g/*b
+ * (each 0-255). Returns 1 on success, 0 if s doesn't look like either form
+ * at all (caller should fall back to the plain palette-index path), or -1
+ * if it looks like one of these forms but is malformed (caller should
+ * report an error rather than silently falling back). */
+static int ex_colorrgb(char *s, int *r, int *g, int *b)
+{
+	if (s[0] == '#') {
+		int i, v[3];
+		if (strlen(s + 1) != 6)
+			return -1;
+		for (i = 0; i < 6; i++)
+			if (ex_hexval((unsigned char) s[1 + i]) < 0)
+				return -1;
+		for (i = 0; i < 3; i++)
+			v[i] = ex_hexval((unsigned char) s[1 + i * 2]) * 16 +
+				ex_hexval((unsigned char) s[2 + i * 2]);
+		*r = v[0];
+		*g = v[1];
+		*b = v[2];
+		return 1;
+	}
+	if (strchr(s, ',')) {
+		char *tok = s;
+		int i, v[3];
+		for (i = 0; i < 3; i++) {
+			char *end;
+			if (!tok || !*tok)
+				return -1;
+			v[i] = strtol(tok, &end, 10);
+			if (end == tok || v[i] < 0 || v[i] > 255)
+				return -1;
+			if (i < 2) {
+				if (*end != ',')
+					return -1;
+				tok = end + 1;
+			} else if (*end != '\0') {
+				return -1;
+			}
+		}
+		*r = v[0];
+		*g = v[1];
+		*b = v[2];
+		return 1;
+	}
+	return 0;
+}
+
 static int ec_highlight(char *loc, char *cmd, char *arg, char *txt)
 {
 	char *name = ex_skip(&arg);
@@ -959,6 +1018,7 @@ static int ec_highlight(char *loc, char *cmd, char *arg, char *txt)
 	char *fg = ex_skip(&arg);
 	char *bg = ex_skip(&arg);
 	int mode = 0;
+	int r, g, b, rc, slot;
 	if (!name)
 		return 1;
 	if (strchr(attr, 'b'))
@@ -971,10 +1031,42 @@ static int ec_highlight(char *loc, char *cmd, char *arg, char *txt)
 		mode |= SYN_HP;
 	if (strchr(attr, 'l'))
 		mode |= SYN_LP;
-	if (fg && isdigit((unsigned char) *fg))
-		mode |= SYN_FGMK(atoi(fg));
-	if (bg && isdigit((unsigned char) *bg))
-		mode |= SYN_BGMK(atoi(bg));
+	if (fg && (rc = ex_colorrgb(fg, &r, &g, &b))) {
+		if (rc < 0) {
+			ex_show("hi: bad fg color \"%s\"", fg);
+			return 1;
+		}
+		if ((slot = syn_tcslot(r, g, b)) < 0) {
+			ex_show("hi: too many truecolor entries (max %d)", SYN_TCSLOTS);
+			return 1;
+		}
+		mode |= SYN_FGTC | SYN_FGMK(slot);
+	} else if (fg && isdigit((unsigned char) *fg)) {
+		int val = atoi(fg);
+		if (val < 0 || val > 255) {
+			ex_show("hi: fg color %d out of range [0,255]", val);
+			return 1;
+		}
+		mode |= SYN_FGMK(val);
+	}
+	if (bg && (rc = ex_colorrgb(bg, &r, &g, &b))) {
+		if (rc < 0) {
+			ex_show("hi: bad bg color \"%s\"", bg);
+			return 1;
+		}
+		if ((slot = syn_tcslot(r, g, b)) < 0) {
+			ex_show("hi: too many truecolor entries (max %d)", SYN_TCSLOTS);
+			return 1;
+		}
+		mode |= SYN_BGTC | SYN_BGMK(slot);
+	} else if (bg && isdigit((unsigned char) *bg)) {
+		int val = atoi(bg);
+		if (val < 0 || val > 255) {
+			ex_show("hi: bg color %d out of range [0,255]", val);
+			return 1;
+		}
+		mode |= SYN_BGMK(val);
+	}
 	conf_hlset(conf_hlnum(name), mode);
 	return 0;
 }

@@ -310,7 +310,7 @@ def main():
             if args.italic:
                 _, italic_glyphs = parse_bdf(args.italic)
                 print()
-                emit_block('ITALICS', encode_chars_bdf(
+                emit_block('ITALIC', encode_chars_bdf(
                     CHARACTERS, italic_glyphs, char_width, char_height, canvas_top, canvas_left, bpp, args.italic))
             else:
                 print('\nITALIC = REGULAR')
@@ -400,15 +400,15 @@ def main():
     else:
         print('\nBOLD = REGULAR')
 
-    # Emit ITALICS Font Block
+    # Emit ITALIC Font Block
     if args.italic:
         italic_font = ImageFont.truetype(args.italic, args.font_size)
         print()
-        emit_block('ITALICS', encode_chars_ttf(CHARACTERS, italic_font, char_width, char_height, y_offset, bpp, sample_p, remap, palette))
+        emit_block('ITALIC', encode_chars_ttf(CHARACTERS, italic_font, char_width, char_height, y_offset, bpp, sample_p, remap, palette))
     else:
         print('\nITALIC = REGULAR')
 
-    # Emit BOLD_ITALICS Font Block
+    # Emit BOLD_ITALIC Font Block
     if args.bold_italic:
         bi_font = ImageFont.truetype(args.bold_italic, args.font_size)
         print()

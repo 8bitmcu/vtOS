@@ -188,6 +188,17 @@ int cmd_exec(char *cmd);
 #define SYN_FGMK(f)	(0x100000 | (f))
 #define SYN_BGMK(b)	(0x200000 | ((b) << 8))
 
+/* fg/bg hold an index into the truecolor slot table (syn_tcslot/syn_tcget)
+ * rather than a literal 256-color palette index -- bits 24-31 were
+ * otherwise unused (even SYN_LP only reaches bit 23), so this keeps the
+ * packed attribute at 32 bits instead of widening it (see syn_merge()'s
+ * comment for why widening would be far riskier: it reassembles fg/bg via
+ * (bg << 8) | fg into a single scalar, which 24-bit-per-channel values
+ * can't fit into alongside the flag bits). */
+#define SYN_FGTC	0x01000000
+#define SYN_BGTC	0x02000000
+#define SYN_TCSLOTS	16
+
 #define SYN_FLG		0x7f0000
 #define SYN_FGSET(a)	((a) & 0x1000ff)
 #define SYN_BGSET(a)	((a) & 0x20ff00)
@@ -199,6 +210,8 @@ int *syn_highlight(char *ft, char *s);
 char *syn_filetype(char *path);
 void syn_context(int fg, int bg);
 int syn_merge(int old, int new);
+int syn_tcslot(int r, int g, int b);
+void syn_tcget(int slot, int *r, int *g, int *b);
 void syn_init(void);
 void syn_done(void);
 
@@ -215,6 +228,7 @@ char *conf_ecmd(void);
 int conf_hl(int id);
 int conf_hlnum(char *hl);
 void conf_hlset(int id, int hl);
+void conf_hltcinit(void);
 char *kmap_map(int id, int key);
 void kmap_def(int id, int key, char *def);
 int kmap_find(char *name);

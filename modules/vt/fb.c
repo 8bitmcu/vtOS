@@ -35,8 +35,21 @@ static mp_obj_t dict_get_optional(mp_obj_dict_t *dict, qstr key) {
 uint16_t map_st_color(int number) {
   uint16_t r565;
 
+  // 0. Truecolor (see st.h's TRUECOLOR()/IS_TRUECOL() -- bit 24 set marks a
+  // packed 24-bit RGB value rather than a palette index). Checked first:
+  // parsing/storage (st.c's tdefcolor()/tsetattr()) already round-trip this
+  // correctly, but until now nothing here ever read the marker bit, so
+  // every truecolor SGR silently fell through to the final "else" branch
+  // below and rendered solid white.
+  if (IS_TRUECOL(number)) {
+    uint8_t r = (number >> 16) & 0xff;
+    uint8_t g = (number >> 8) & 0xff;
+    uint8_t b = number & 0xff;
+    r565 = ((uint16_t)(r >> 3) << 11) | ((uint16_t)(g >> 2) << 5) |
+           (uint16_t)(b >> 3);
+  }
   // 1. Standard/Bright (0-15)
-  if (number < 16) {
+  else if (number < 16) {
     static const uint16_t ansi_16[16] = {
         0x0000, 0x8000, 0x0400, 0x8400, 0x0010, 0x8010, 0x0410, 0xBDF7,
         0x8410, 0xF800, 0x07E0, 0xFFE0, 0x001F, 0xF81F, 0x07FF, 0xFFFF};
@@ -270,6 +283,24 @@ row_render_t render_row_rgb565(Line ln, int _x1, int _y1, int _x2,
                                             MP_QSTR_BOLD);
       if (bold_obj != MP_OBJ_NULL && bold_obj != mp_const_none) {
         mp_get_buffer_raise(bold_obj, &bold_buf, MP_BUFFER_READ);
+      }
+      // ITALIC/BOLD_ITALIC aren't pre-registered qstrs the way REGULAR/BOLD
+      // are (those two got added specifically for this font-dict lookup) --
+      // qstr_from_str() here matches the same dynamic-interning pattern
+      // already used below for UNICODE_FONT/WIDE_FONT/etc. Optional, same
+      // as everything else here: a font with no italic slant just falls
+      // back to bold/regular below rather than crashing or dropping the
+      // attribute silently.
+      mp_buffer_info_t italic_buf = {0}, bolditalic_buf = {0};
+      mp_obj_t italic_obj = dict_get_optional(MP_OBJ_TO_PTR(vt->font->globals),
+                                              qstr_from_str("ITALIC"));
+      if (italic_obj != MP_OBJ_NULL && italic_obj != mp_const_none) {
+        mp_get_buffer_raise(italic_obj, &italic_buf, MP_BUFFER_READ);
+      }
+      mp_obj_t bolditalic_obj = dict_get_optional(
+          MP_OBJ_TO_PTR(vt->font->globals), qstr_from_str("BOLD_ITALIC"));
+      if (bolditalic_obj != MP_OBJ_NULL && bolditalic_obj != mp_const_none) {
+        mp_get_buffer_raise(bolditalic_obj, &bolditalic_buf, MP_BUFFER_READ);
       }
 
       // Unicode font handling
@@ -535,9 +566,23 @@ row_render_t render_row_rgb565(Line ln, int _x1, int _y1, int _x2,
         col_width_cache[i] = f_width;
         if (char_val >= first && char_val <= last && reg_buf.buf) {
           uint32_t offset = (char_val - first) * (f_height * wide);
-          const uint8_t *base = ((ln[col_idx].mode & ATTR_BOLD) && bold_buf.buf)
-                                    ? (uint8_t *)bold_buf.buf
-                                    : (uint8_t *)reg_buf.buf;
+          // Same "default to regular, upgrade only if both the attribute
+          // is set and that variant's buffer actually exists" rule as
+          // before, extended to italic: bold+italic prefers a genuine
+          // BOLD_ITALIC slant if the font embeds one, otherwise falls back
+          // to italic (kept over bold since it's usually the more visually
+          // load-bearing attribute -- e.g. this project's own comment
+          // highlighting is italic-only, never bold), then bold, then
+          // regular.
+          int is_bold = ln[col_idx].mode & ATTR_BOLD;
+          int is_italic = ln[col_idx].mode & ATTR_ITALIC;
+          const uint8_t *base = (uint8_t *)reg_buf.buf;
+          if (is_bold && is_italic && bolditalic_buf.buf)
+            base = (uint8_t *)bolditalic_buf.buf;
+          else if (is_italic && italic_buf.buf)
+            base = (uint8_t *)italic_buf.buf;
+          else if (is_bold && bold_buf.buf)
+            base = (uint8_t *)bold_buf.buf;
           font_ptr_cache[i] = base + offset;
         } else if (icons_buf.buf && icon_count > 0 && char_val >= icon_first &&
                    char_val < icon_first + icon_count) {

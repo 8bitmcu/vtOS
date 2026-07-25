@@ -14,6 +14,12 @@ static struct ftmap {
 static struct rset *syn_ftrs;
 static int syn_ctx1, syn_ctx2;
 
+/* truecolor slot table: SYN_FG/SYN_BG only carry 8 bits, not enough for a
+ * 24-bit RGB value -- SYN_FGTC/SYN_BGTC (vi.h) mark that the fg/bg value
+ * is an index into this table instead of a literal 256-color index. */
+static int tc_slots[SYN_TCSLOTS][3];
+static int tc_slot_count;
+
 static struct rset *syn_find(char *ft)
 {
 	int i;
@@ -47,11 +53,49 @@ static struct rset *syn_make(char *name)
 
 int syn_merge(int old, int new)
 {
-	int fg = SYN_FGSET(new) ? SYN_FG(new) : SYN_FG(old);
-	int bg = SYN_BGSET(new) ? SYN_BG(new) : SYN_BG(old);
+	/* Track which of old/new "wins" for fg and for bg (same condition the
+	 * plain SYN_FG()/SYN_BG() extraction below already uses) so the
+	 * SYN_FGTC/SYN_BGTC marker can travel with whichever value is chosen.
+	 * A blanket "(old | new) & mask" (the way the other flag bits below
+	 * are merged) would be wrong here: it would tag a plain 256-color
+	 * value as truecolor whenever the *other* operand happened to carry
+	 * the marker, even though that operand's own fg/bg didn't win. */
+	int fgsrc = SYN_FGSET(new) ? new : old;
+	int bgsrc = SYN_BGSET(new) ? new : old;
+	int fg = SYN_FG(fgsrc);
+	int bg = SYN_BG(bgsrc);
 	if (SYN_RANK(old) > SYN_RANK(new))
 		return syn_merge(new, old);
-	return ((old | new) & SYN_FLG) | (bg << 8) | fg;
+	return ((old | new) & SYN_FLG) | (fgsrc & SYN_FGTC) | (bgsrc & SYN_BGTC) |
+		(bg << 8) | fg;
+}
+
+/* Register (or reuse, if already present) a truecolor slot for (r,g,b).
+ * Returns the slot index (0..SYN_TCSLOTS-1), or -1 if the table is full --
+ * callers must not tag a -1 result with SYN_FGTC/SYN_BGTC. */
+int syn_tcslot(int r, int g, int b)
+{
+	int i;
+	for (i = 0; i < tc_slot_count; i++)
+		if (tc_slots[i][0] == r && tc_slots[i][1] == g && tc_slots[i][2] == b)
+			return i;
+	if (tc_slot_count >= SYN_TCSLOTS)
+		return -1;
+	tc_slots[tc_slot_count][0] = r;
+	tc_slots[tc_slot_count][1] = g;
+	tc_slots[tc_slot_count][2] = b;
+	return tc_slot_count++;
+}
+
+void syn_tcget(int slot, int *r, int *g, int *b)
+{
+	if (slot < 0 || slot >= tc_slot_count) {
+		*r = *g = *b = 0;
+		return;
+	}
+	*r = tc_slots[slot][0];
+	*g = tc_slots[slot][1];
+	*b = tc_slots[slot][2];
 }
 
 void syn_context(int ctx1, int ctx2)
@@ -133,6 +177,11 @@ void syn_init(void)
 	for (i = 0; !conf_filetype(i, NULL, &pat) && i < LEN(pats); i++)
 		pats[i] = pat;
 	syn_ftrs = rset_make(i, pats, 0);
+	// Resolve conf.c's compile-time truecolor overrides (conf_tcdefs[])
+	// into real tc_slots[] entries -- must happen before the first
+	// syn_highlight() call, which is why this lives in syn_init() rather
+	// than somewhere lazier.
+	conf_hltcinit();
 }
 
 void syn_done(void)
@@ -156,4 +205,9 @@ void syn_done(void)
 	}
 	rset_free(syn_ftrs);
 	syn_ftrs = NULL;
+	// Same class of fix as ftmap[] above: tc_slot_count is a file-scope
+	// static too, and would otherwise keep accumulating :hi-registered
+	// truecolor slots across sessions instead of starting fresh, slowly
+	// eating into the fixed SYN_TCSLOTS cap over many vi invocations.
+	tc_slot_count = 0;
 }

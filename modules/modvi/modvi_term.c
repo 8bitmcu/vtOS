@@ -234,13 +234,21 @@ char *term_seqattr(int att, int old) {
   if (att & SYN_RV)
     s += sprintf(s, ";7");
   if (SYN_FGSET(att)) {
-    if ((fg & 0xff) < 8)
+    if (att & SYN_FGTC) {
+      int r, g, b;
+      syn_tcget(fg & 0xff, &r, &g, &b);
+      s += sprintf(s, ";38;2;%d;%d;%d", r, g, b);
+    } else if ((fg & 0xff) < 8)
       s += sprintf(s, ";%d", 30 + (fg & 0xff));
     else
       s += sprintf(s, ";38;5;%d", (fg & 0xff));
   }
   if (SYN_BGSET(att)) {
-    if ((bg & 0xff) < 8)
+    if (att & SYN_BGTC) {
+      int r, g, b;
+      syn_tcget(bg & 0xff, &r, &g, &b);
+      s += sprintf(s, ";48;2;%d;%d;%d", r, g, b);
+    } else if ((bg & 0xff) < 8)
       s += sprintf(s, ";%d", 40 + (bg & 0xff));
     else
       s += sprintf(s, ";48;5;%d", (bg & 0xff));

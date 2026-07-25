@@ -13,9 +13,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/tdeck_kvm/micropython.cmake)
 # include the trackball module
 include(${CMAKE_CURRENT_LIST_DIR}/tdeck_trk/micropython.cmake)
 
-# include the vi editor module
-include(${CMAKE_CURRENT_LIST_DIR}/vi/micropython.cmake)
-
 # include the zm module (Z-machine interpreter)
 include(${CMAKE_CURRENT_LIST_DIR}/zm/micropython.cmake)
 
@@ -36,3 +33,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/codec2/micropython.cmake)
 
 # include the modssh module (wolfSSH-backed)
 include(${CMAKE_CURRENT_LIST_DIR}/modssh/micropython.cmake)
+
+# include the vi editor module
+include(${CMAKE_CURRENT_LIST_DIR}/vimod/micropython.cmake)

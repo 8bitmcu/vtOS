@@ -34,11 +34,11 @@ The core terminal engine is based on `st`.
 - © 2013-2014 Markus Teich <markus dot teich at stusta dot mhn dot de>
 - © 2014-2015 Laslo Hunhold <dev at frign dot de>
 
-### vi (Toybox)
-The `vi` implementation is derived from Toybox.
-* **Copyright:** 2015 Rob Landley <rob@landley.net>, 2019 Jarno Mäkipää <jmakip87@gmail.com>.
-* **License:** **0BSD** (Zero-Clause BSD).
-* **Summary:** Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+### vi (neatvi)
+The `vi` implementation is derived from [neatvi](https://github.com/aligrudi/neatvi), vendored under `modules/vimod/neatvi/`.
+* **Copyright:** 2015-2026 Ali Gholami Rudi <ali@rudi.ir>.
+* **License:** **ISC**.
+* **Summary:** Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
 
 ### frotz (Zmachine interpreter)
 The Z-Machine interpreter is based on Frotz.
@@ -98,7 +98,7 @@ The `--icons` glyph set is based on Siji.
 ---
 
 ### Implementation Note for the T-Deck
-While the original `vi` code follows the 0BSD license and the `st` engine follows the MIT/X Consortium license, the specific architectural modifications in this repository—including the **MicroPython VFS Bridge**, **NLR Exception Guarding**, **Zero-allocation Status Bar**, and **GC-safe Memory Management**—are contributed under the project's primary MIT license.
+While the original `vi` code (neatvi) follows the ISC license and the `st` engine follows the MIT/X Consortium license, the specific architectural modifications in this repository—including the **MicroPython VFS Bridge**, **NLR Exception Guarding**, **Zero-allocation Status Bar**, and **GC-safe Memory Management**—are contributed under the project's primary MIT license.
 
 ---
 

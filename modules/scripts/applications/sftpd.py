@@ -161,8 +161,8 @@ def main(env, args):
     global _server, _env
 
     _env = env
-    auth_user = args[0] if len(args) > 0 else None
-    auth_pass = args[1] if len(args) > 1 else None
+    auth_user = args[0] if len(args) > 0 else "admin"
+    auth_pass = args[1] if len(args) > 1 else "admin"
     port = int(args[2]) if len(args) > 2 else 2222
 
     if args and args[0] == "stop":
@@ -174,7 +174,7 @@ def main(env, args):
         return
 
     if auth_user is None or auth_pass is None:
-        print("Usage: sftpd <user> <password> [port]\n        sftpd stop")
+        print("Usage: sftpd [user] [password] [port]\n        sftpd stop")
         return
 
     if _server is not None and _server.status() != modsftpd.STOPPED:

@@ -4,7 +4,7 @@ This project features first-class support for the [LILYGO T-Deck](https://s.clic
 
 This project implements a high-performance, attribute-aware terminal emulator for MicroPython. By wrapping the [st](https://st.suckless.org/) (suckless terminal) engine in a custom C module, it achieves desktop-class terminal features on embedded hardware, including a **zero-allocation status bar** for real-time telemetry without heap fragmentation.
 
-As a showcase of the engine's capabilities, this project includes a fully functional, VFS-aware C port of the [vi](https://en.wikipedia.org/wiki/Vi_(text_editor)) **text editor** and [frotz](https://davidgriffith.gitlab.io/frotz/) **ZMachine interpreter** that supports playing classic text games like [Zork](https://en.wikipedia.org/wiki/Zork). The firmware provides a Python-based **Telnet client**, **FTP server**, a TUI based **File Manager**, **IRC Client**, **RSS Reader** and  **Network Manager** demonstrating how the terminal engine can be easily extended.
+As a showcase of the engine's capabilities, this project includes a fully functional, VFS-aware C port of [neatvi](https://github.com/aligrudi/neatvi), a **vi/ex text editor**, and [frotz](https://davidgriffith.gitlab.io/frotz/) **ZMachine interpreter** that supports playing classic text games like [Zork](https://en.wikipedia.org/wiki/Zork). The firmware provides a Python-based **Telnet client**, **FTP server**, a TUI based **File Manager**, **IRC Client**, **RSS Reader** and  **Network Manager** demonstrating how the terminal engine can be easily extended.
 
 | ASCII demo (running on CYD) | vi app |
 | :---: | :---: |
@@ -97,7 +97,7 @@ You can execute the following commands from the built-in shell:
 | `ssh` | SSH Client; connect to a remote ssh server |
 | `sshd` | SSH Server; runs in the background |
 | `telnet` | Connects to a telnet server |
-| `vi` | Opens the vi port |
+| `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)) |
 | `vncd` | Launches a VNC Server. Known compatible with TigerVNC. Terribly slow |
 | `webvncd` | Launches a web "VNC"-like server. Faster than `vncd` |
 | `zm` | Launches `dfrotz`, the ZMachine interpreter |
@@ -199,7 +199,7 @@ This project's source code is licensed under the **MIT License**. However, if yo
 ### Third-Party Components:
 * **st License:** MIT (c) st engineers.
 * **st7789_mpy:** (c) Russ Hughes. MIT License
-* **vi** (Toybox): (c) Rob Landley, Jarno Mäkipää. 0BSD License (Zero-Clause BSD).
+* **vi** (neatvi): (c) Ali Gholami Rudi. ISC License.
 * **frotz**: (c) Stefan Jokisch, David Griffith. GPLv2 License
 * **yxml**: Copyright (c) 2013-2014 Yoran Heling. MIT License
 * **codec2**: (c) 2010 David Rowe. LGPL-2.1 License (vendored in full under `modules/codec2/vendor/`, see `modules/codec2/COPYING`)

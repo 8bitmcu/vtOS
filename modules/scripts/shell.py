@@ -128,7 +128,7 @@ class Shell:
         self.register("play",        _app("applications.player",     tui=True, audio=True))
         self.register("lorachat",    _app("applications.lorachat",   tui=True, radio=True))
         self.register("rec",         _app("applications.rec",        rec=True))
-        self.register("vi",          _app("vi"))
+        self.register("vi",          _app("vimod"))
         self.register("zm",          _app("zm"))
 
     def _load_aliases(self):

@@ -22,6 +22,7 @@
  * New undo mechanism added by Jim Dunleavy <jim.dunleavy@erha.ie>
  */
 
+#include "../../modzm_compat.h"
 #include <stdio.h>
 #include <string.h>
 #include "frotz.h"

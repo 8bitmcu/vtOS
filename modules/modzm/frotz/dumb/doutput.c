@@ -19,6 +19,7 @@
  * Or visit http://www.fsf.org/
  */
 
+#include "../../modzm_compat.h"
 #include "esp_attr.h"
 #include "dfrotz.h"
 

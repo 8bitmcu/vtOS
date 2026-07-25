@@ -22,6 +22,7 @@
  * http://inform-fiction.org/zmachine/standards/quetzal/index.html
  */
 
+#include "../../modzm_compat.h"
 #include <stdio.h>
 #include <string.h>
 #include "esp_attr.h"

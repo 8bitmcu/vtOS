@@ -20,6 +20,7 @@
  */
 
 
+#include "../../modzm_compat.h"
 #include "dfrotz.h"
 #include "dblorb.h"
 

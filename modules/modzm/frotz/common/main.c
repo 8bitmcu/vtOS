@@ -24,6 +24,7 @@
  *
  */
 
+#include "../../modzm_compat.h"
 #include <stdlib.h>
 #include "esp_attr.h"
 #include "frotz.h"

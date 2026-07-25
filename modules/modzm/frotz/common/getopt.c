@@ -8,6 +8,7 @@
  *
  */
 
+#include "../../modzm_compat.h"
 #include <stdio.h>
 #include <string.h>
 

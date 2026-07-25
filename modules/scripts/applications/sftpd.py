@@ -173,10 +173,6 @@ def main(env, args):
             print("sftpd not running")
         return
 
-    if auth_user is None or auth_pass is None:
-        print("Usage: sftpd [user] [password] [port]\n        sftpd stop")
-        return
-
     if _server is not None and _server.status() != modsftpd.STOPPED:
         print("sftpd: already running\nuse 'sftpd stop' to stop it")
         return

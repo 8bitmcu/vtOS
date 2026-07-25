@@ -1,0 +1,90 @@
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "esp_attr.h"
+#include "vi.h"
+
+static EXT_RAM_BSS_ATTR char *bufs[256];
+static EXT_RAM_BSS_ATTR int lnmode[256];
+
+static char *reg_getraw(int c, int *ln)
+{
+	if (ln != NULL)
+		*ln = lnmode[c];
+	return bufs[c];
+}
+
+char *reg_get(int c, int *lnmode)
+{
+	static char ln[1024];
+	static char linno[16];
+	static char colno[16];
+	if (c == '"')
+		c = 0;
+	if (c == ';') {
+		char *s = lbuf_get(xb, xrow);
+		snprintf(ln, sizeof(ln), "%s", s ? s : "");
+		if (strchr(ln, '\n') != NULL)
+			*strchr(ln, '\n') = '\0';
+		if (lnmode != NULL)
+			*lnmode = 1;
+		return ln;
+	}
+	if (c == ']') {
+		char *s = lbuf_get(xb, xrow);
+		if (uc_word(s, ln, sizeof(ln), xoff, ""))
+			ln[0] = '\0';
+		return ln;
+	}
+	if (c == '#') {
+		snprintf(linno, sizeof(linno), "%d", xrow + 1);
+		return linno;
+	}
+	if (c == '^') {
+		snprintf(colno, sizeof(colno), "%d", xoff + 1);
+		return colno;
+	}
+	return reg_getraw(c, lnmode);
+}
+
+static void reg_putraw(int c, char *s, int ln)
+{
+	char *pre = isupper(c) && bufs[tolower(c)] ? bufs[tolower(c)] : "";
+	char *buf = malloc(strlen(pre) + strlen(s) + 1);
+	strcpy(buf, pre);
+	strcat(buf, s);
+	free(bufs[tolower(c)]);
+	bufs[tolower(c)] = buf;
+	lnmode[tolower(c)] = ln;
+}
+
+void reg_put(int c, char *s, int ln)
+{
+	int i, i_ln;
+	char *i_s;
+	if ((ln || strchr(s, '\n')) && (!c || isalpha(c))) {
+		for (i = 8; i > 0; i--)
+			if ((i_s = reg_get('0' + i, &i_ln)))
+				reg_putraw('0' + i + 1, i_s, i_ln);
+		reg_putraw('1', s, ln);
+	}
+	reg_putraw(c, s, ln);
+}
+
+void reg_done(void)
+{
+	int i;
+	// bufs[]/lnmode[] are file-scope statics, persisting across repeated
+	// reg_done() calls in this port (one per vi session, unlike
+	// neatvi's original one-shot-process design) -- same class of bug
+	// already found and fixed in syn.c's syn_done(): freeing without
+	// clearing the pointer leaves a later reg_get()/reg_putraw() (via
+	// its isupper(c) && bufs[tolower(c)] check) reading/writing through
+	// a dangling pointer.
+	for (i = 0; i < LEN(bufs); i++) {
+		free(bufs[i]);
+		bufs[i] = NULL;
+		lnmode[i] = 0;
+	}
+}

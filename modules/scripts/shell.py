@@ -128,8 +128,8 @@ class Shell:
         self.register("play",        _app("applications.player",     tui=True, audio=True))
         self.register("lorachat",    _app("applications.lorachat",   tui=True, radio=True))
         self.register("rec",         _app("applications.rec",        rec=True))
-        self.register("vi",          _app("vimod"))
-        self.register("zm",          _app("zm"))
+        self.register("vi",          _app("modvi"))
+        self.register("zm",          _app("modzm"))
 
     def _load_aliases(self):
         try:
@@ -240,7 +240,7 @@ class Shell:
         ver = sys.implementation.version
         version_str = f"{ver[0]}.{ver[1]}.{ver[2]}"
         # TODO: move versioning to makefile
-        print(f"vtOS v0.1.11; MicroPython v{version_str}\nType 'help' to see commands.")
+        print(f"vtOS v0.1.12-dev; MicroPython v{version_str}\nType 'help' to see commands.")
 
         while self.running:
             try:

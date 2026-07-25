@@ -35,7 +35,7 @@ The core terminal engine is based on `st`.
 - © 2014-2015 Laslo Hunhold <dev at frign dot de>
 
 ### vi (neatvi)
-The `vi` implementation is derived from [neatvi](https://github.com/aligrudi/neatvi), vendored under `modules/vimod/neatvi/`.
+The `vi` implementation is derived from [neatvi](https://github.com/aligrudi/neatvi), vendored under `modules/modvi/neatvi/`.
 * **Copyright:** 2015-2026 Ali Gholami Rudi <ali@rudi.ir>.
 * **License:** **ISC**.
 * **Summary:** Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.

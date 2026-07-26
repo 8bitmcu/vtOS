@@ -85,25 +85,26 @@ You can execute the following commands from the built-in shell:
 | `clear` | Clears the screen |
 | `c2` | Codec 2 audio/voice codec encode/decode utility |
 | `fav` | Built-in shell aliases |
-| `fc` | Font Configuration Utility |
+| `fc` | Font Configuration Utility. Try `menu fc` |
 | `fm` | Starts the TUI File Manager |
 | `ftp` | FTP Client that mounts it's content as a VFS |
 | `ftpd` | Launches a FTP Server on `/` with user `admin` and pwd `admin` |
-| `irc` | Connects to an IRC channel given a server, port, nickname and channel |
-| `loracfg` | Utility to configure LoRa frequency and power |
+| `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
+| `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |
 | `menu` | An interactive shortcut menu for commands |
 | `ms` | Opens the minesweeper clone |
 | `nm` | Starts the TUI Network Manager |
 | `play` | Audio player that supports WAV and MP3 |
 | `rec` | Audio recorder |
-| `rss` | RSS Reader; connect to a RSS url to retreive the articles |
+| `rss` | RSS Reader; connect to a RSS url to retreive the articles, or use `menu rss` for saved feeds |
 | `sftp` | SFTP Client that mounts its content as a VFS |
 | `sftpd` | SFTP Server; runs in the background |
 | `ssh` | SSH Client; connect to a remote ssh server |
 | `sshd` | SSH Server; runs in the background |
-| `telnet` | Connects to a telnet server |
-| `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)) |
+| `stream` | Streams internet radio (MP3 over HTTP); pass a URL, or use `menu stream` for saved stations |
+| `telnet` | Connects to a telnet server. try `menu telnet` |
+| `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)). Includes 5 configurable themes |
 | `vncd` | Launches a VNC Server. Known compatible with TigerVNC. Terribly slow |
 | `webvncd` | Launches a web "VNC"-like server. Faster than `vncd` |
 | `zm` | Launches `dfrotz`, the ZMachine interpreter |

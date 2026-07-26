@@ -399,8 +399,8 @@ static mp_int_t duration_stream_seek(mp_obj_t file, mp_int_t offset,
 // ---- VFS feed (runs on the MicroPython thread only) ---------------------
 //
 // Pulls up to FEED_CHUNK_SIZE bytes from self->file_obj (any MicroPython
-// stream: internal flash, SD card, etc.) into the ring buffer. Safe to
-// call repeatedly; a no-op once EOF has been reached.
+// stream: internal flash, SD card, a live network socket, etc.) into the
+// ring buffer. Safe to call repeatedly; a no-op once EOF has been reached.
 //
 // Returns: 1 = queued more data, 0 = EOF / nothing to do, -1 = no file open.
 static int audioplayer_feed_internal(audioplayer_obj_t *self) {
@@ -423,6 +423,17 @@ static int audioplayer_feed_internal(audioplayer_obj_t *self) {
   const mp_stream_p_t *stream_p =
       mp_get_stream_raise(self->file_obj, MP_STREAM_OP_READ);
   mp_uint_t n = stream_p->read(self->file_obj, chunk, to_read, &errcode);
+
+  if (errcode == MP_EAGAIN || errcode == MP_ETIMEDOUT) {
+    // Transient: a live network socket (radio streaming) armed with
+    // settimeout() simply had no data ready within its read timeout --
+    // the connection is still alive, this is NOT end of stream. Leave
+    // rb.eof false and file_obj open; report "nothing queued this
+    // round" the same as an ordinary empty read, so the decode task's
+    // own request_feed()/vTaskDelay(10ms) retry loop just tries again
+    // next time instead of tearing down playback.
+    return 0;
+  }
 
   if (errcode != 0) {
     self->last_error = -errcode;
@@ -955,14 +966,27 @@ static mp_obj_t audioplayer_play(mp_obj_t self_in, mp_obj_t filename_in) {
                  MP_ERROR_TEXT("already playing; call stop() first"));
   }
 
-  // Open via MicroPython's own open(), not fopen() -- this is what makes
-  // the module VFS-aware: it works for anything mounted through
-  // MicroPython's VFS (internal flash, SD cards mounted with os.mount(),
-  // etc.), not just paths ESP-IDF's own POSIX layer happens to see.
-  // Lets a bad path raise a normal Python OSError/FileNotFoundError.
-  mp_obj_t open_fn = mp_load_global(MP_QSTR_open);
-  mp_obj_t open_args[2] = {filename_in, MP_OBJ_NEW_QSTR(MP_QSTR_rb)};
-  mp_obj_t file = mp_call_function_n_kw(open_fn, 2, 0, open_args);
+  mp_obj_t file;
+  if (mp_obj_is_str(filename_in)) {
+    // Open via MicroPython's own open(), not fopen() -- this is what
+    // makes the module VFS-aware: it works for anything mounted through
+    // MicroPython's VFS (internal flash, SD cards mounted with
+    // os.mount(), etc.), not just paths ESP-IDF's own POSIX layer
+    // happens to see. Lets a bad path raise a normal Python
+    // OSError/FileNotFoundError.
+    mp_obj_t open_fn = mp_load_global(MP_QSTR_open);
+    mp_obj_t open_args[2] = {filename_in, MP_OBJ_NEW_QSTR(MP_QSTR_rb)};
+    file = mp_call_function_n_kw(open_fn, 2, 0, open_args);
+  } else {
+    // Already a stream-like object (e.g. a live socket handed in for
+    // radio streaming -- an HTTP response body with no Content-Length
+    // is just the raw, still-open socket). Caller owns
+    // opening/connecting it; validate the stream protocol up front, on
+    // the MP thread, so a bad object raises a clear error here instead
+    // of deep inside the first feed.
+    mp_get_stream_raise(filename_in, MP_STREAM_OP_READ);
+    file = filename_in;
+  }
 
   self->file_obj = file;
   self->last_error = 0;

@@ -44,13 +44,13 @@ try:
                 f"Happy hacking!")
 
     with open(".virc", "x") as f:
-        f.write(""""Vi themes, uncomment to use:
+        f.write('''"Vi themes, uncomment to use:
 "theme solarized
 "theme gruvbox
 "theme catppuccin
 "theme tokyonight
 "theme nord
-""")
+''')
 
     try:
         os.mkdir("menu")
@@ -104,6 +104,31 @@ try:
             "Terminus 12px": "terminus_mpy_12",
             "Terminus 14px": "terminus_mpy_14",
             "Unifont 16px": "unifont_mpy_16",
+    }, f)
+
+    with open("menu/.loracfg.json", "x") as f:
+        json.dump({
+            "433 MHz (Asia & Global Alternative)": "433",
+            "868 MHz (Europe)": "868",
+            "915 MHz (North America & Australia)": "915",
+    }, f)
+
+    with open("menu/.stream.json", "x") as f:
+        json.dump({
+            "SomaFM: Groove Salad (Ambient/Downtempo)": "http://ice1.somafm.com/groovesalad-128-mp3",
+            "SomaFM: DEF CON Radio (Hacker/Electronic)": "http://ice1.somafm.com/defcon-128-mp3",
+            "SomaFM: Secret Agent (Lounge/Spy Music)": "http://ice1.somafm.com/secretagent-128-mp3",
+            "181.fm: Energy 98 (Dance/Techno)": "http://listen.181fm.com/181-energy98_128k.mp3",
+            "KEXP 90.3 FM Seattle (Indie/Alternative)": "http://live-mp3-128.kexp.org/kexp128.mp3",
+            "Radio Paradise (Eclectic Rock/Pop)": "http://stream.radioparadise.com/mp3-128",
+            "181.fm: The Eagle (Classic Rock)": "http://listen.181fm.com/181-eagle_128k.mp3",
+            "181.fm: Awesome 80's (80s Pop/Rock)": "http://listen.181fm.com/181-awesome80s_128k.mp3",
+            "Radio Swiss Jazz (Classic Jazz)": "http://stream.srg-ssr.ch/m/rsj/mp3_128",
+            "WQXR 105.9 FM New York (Classical)": "http://stream.wqxr.org/wqxr.mp3",
+            "181.fm: True Blues (Blues)": "http://listen.181fm.com/181-blues_128k.mp3",
+            "181.fm: Power 181 (Top 40 Hits)": "http://listen.181fm.com/181-power_128k.mp3",
+            "181.fm: The Mix (Variety Pop)": "http://listen.181fm.com/181-themix_128k.mp3",
+            "181.fm: Old School HipHop/RnB (Hip-Hop)": "http://listen.181fm.com/181-oldschool_128k.mp3",
     }, f)
 
 except:

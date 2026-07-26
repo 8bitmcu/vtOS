@@ -126,6 +126,7 @@ class Shell:
         self.register("rss",         _app("applications.rss",        tui=True))
         self.register("fc",          _app("applications.fontcfg",    tui=True))
         self.register("play",        _app("applications.player",     tui=True, audio=True))
+        self.register("stream",      _app("applications.stream",     tui=True, audio=True))
         self.register("lorachat",    _app("applications.lorachat",   tui=True, radio=True))
         self.register("rec",         _app("applications.rec",        rec=True))
         self.register("vi",          _app("modvi"))

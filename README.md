@@ -29,8 +29,8 @@ This project is optimized for the **LilyGO T-Deck**, leveraging MicroPython to i
 | **Keyboard** | LILYGO Keyboard | ✅ Mapped I2C Interface |
 | **Trackball** | LILYGO Trackball | ✅ Mapped I2C Interface |
 | **Speaker** | I2S | ✅ MP3/WAV Playback Support |
+| **SD Card** | SPI | ✅ FAT formatted SD Card |
 | **Microphone** | I2S, ES7210 ADC | ❌ Noise issues |
-| **SD Card** | SPI | ❌ Experimental |
 | **Touchscreen** | GT911 | N/A |
 
 
@@ -38,7 +38,13 @@ This project is optimized for the **LilyGO T-Deck**, leveraging MicroPython to i
 
 You can download and flash the latest pre-compiled firmware directly to your T-Deck.
 
-### Option A: Flash from command line
+### Option A: Flash from the web
+
+1. **Download the Firmware**: Go to the [Releases Page](https://github.com/8bitmcu/vtOS/releases) and download the latest *.bin asset.
+
+2. **Flash to the T-Deck**: Use a web flashing tool like [https://web.esphome.io](https://web.esphome.io) to flash the binary
+
+### Option B: Flash from command line
 
 1. **Download the Firmware**: Go to the [Releases Page](https://github.com/8bitmcu/vtOS/releases) and download the latest *.bin asset.
 
@@ -50,7 +56,7 @@ esptool.py -p /dev/ttyACM0 -b 460800 --chip esp32s3 write_flash 0x0 firmware.bin
 
 ```
 
-### Option B: Bootloader (Launcher)
+### Option C: Bootloader (Launcher)
 
 This firmware is fully compatible with [Launcher](https://bmorcelli.github.io/Launcher), an on-device application launcher and bootloader for ESP32 devices. This method is perfect if you want to seamlessly swap between `vtOS` and other firmware on the go without needing a PC.
 

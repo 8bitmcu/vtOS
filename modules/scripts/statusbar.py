@@ -128,7 +128,10 @@ class StatusBar:
         immediately -- refresh() only runs on the 1Hz status bar timer,
         which would otherwise mean up to a 1s delay before a notification
         actually appeared. The normal 1Hz tick then handles reverting
-        once the 5s window is up."""
+        once the 5s window is up. (If the SD card happens to be mid
+        transfer right now, refresh() defers to it and this notification
+        just shows up on that next 1Hz tick instead -- still recorded
+        below either way.)"""
         if not text:
             return
         self._notify_text = text
@@ -153,6 +156,18 @@ class StatusBar:
         self.term.top_bar(self._notify_style + text + self.clear + b"\x00")
 
     def refresh(self):
+        # top_bar() (below and in _render_notification()) writes straight
+        # to the display over the SPI bus shared with the SD card
+        # (top_bar() -> draw_bar_ansi() -> xdrawline() in fb.c), bypassing
+        # env.term.draw()'s buffered path entirely. Skip this refresh
+        # while a SD transfer has the bus parked at SD_BAUDRATE, rather
+        # than asserting TFT_CS while SDCARD_CS may still be held low
+        # mid-transaction. notify() below still records the pending
+        # notification either way -- it just won't render immediately,
+        # and shows up on the next refresh() (1Hz tick at worst) instead.
+        if self.env.sd_busy:
+            return
+
         if self._notify_text is not None:
             if time.ticks_diff(self._notify_until, time.ticks_ms()) > 0:
                 self._render_notification()

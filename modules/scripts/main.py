@@ -24,30 +24,74 @@ machine.Pin(board.SDCARD_CS, machine.Pin.OUT, value=1)
 machine.Pin(board.SPI_MISO, machine.Pin.IN, machine.Pin.PULL_UP)
 time.sleep(0.1)
 
+# TFT and SD card share one physical SPI bus (same SCK/MOSI/MISO, separate
+# CS) -- see board.py. The display wants max throughput; SD cards don't
+# support anywhere near 80MHz in SPI mode (sdcard.py itself only ever
+# negotiates up to 1.32MHz as its safe steady-state speed). FastSDCard
+# below throttles the shared bus down to SD_BAUDRATE for the duration of
+# each block transfer and restores DISPLAY_BAUDRATE right after.
+DISPLAY_BAUDRATE = 80000000
+SD_BAUDRATE = 20000000
+
+# Bound to the shared hardware SPI object once it's constructed below.
+# Stays None during the initial mount, which still happens over the
+# separate sd_spi (SoftSPI) -- FastSDCard uses that to tell whether a
+# given transfer is sharing the bus with the display at all.
+spi = None
+
 # Mount SD Card (Experimental; doesn't seem to always work)
 try:
     import sdcard
+
+    class FastSDCard(sdcard.SDCard):
+        def _with_sd_speed(self, fn, *args):
+            if self.spi is not spi:
+                # Still on sd_spi (SoftSPI) -- not shared with anything,
+                # nothing to throttle.
+                return fn(*args)
+            # env.sd_busy: true while a SD block transfer has the shared
+            # bus parked at SD_BAUDRATE. Anything else that writes to the
+            # display over the same bus (scheduled_fast's draw(),
+            # statusbar.refresh()) checks this and skips its turn rather
+            # than racing a draw call against the lowered bus speed.
+            env.sd_busy = True
+            spi.init(baudrate=SD_BAUDRATE)
+            try:
+                return fn(*args)
+            finally:
+                spi.init(baudrate=DISPLAY_BAUDRATE)
+                env.sd_busy = False
+
+        def readblocks(self, block_num, buf):
+            return self._with_sd_speed(super(FastSDCard, self).readblocks, block_num, buf)
+
+        def writeblocks(self, block_num, buf):
+            return self._with_sd_speed(super(FastSDCard, self).writeblocks, block_num, buf)
+
+        def ioctl(self, op, arg):
+            return self._with_sd_speed(super(FastSDCard, self).ioctl, op, arg)
+
     sd_spi = machine.SoftSPI(baudrate=400000,
                              sck=machine.Pin(board.SPI_SCK),
                              mosi=machine.Pin(board.SPI_MOSI),
                              miso=machine.Pin(board.SPI_MISO))
 
-    sd = sdcard.SDCard(sd_spi, machine.Pin(board.SDCARD_CS, machine.Pin.OUT))
+    sd = FastSDCard(sd_spi, machine.Pin(board.SDCARD_CS, machine.Pin.OUT))
 
     os.mount(os.VfsFat(sd), '/sd')
 except Exception as e:
     sd = None
 
 # Create hardware SPI; this configures the GPIO matrix for pins 40/41.
-# SoftSPI is no longer used after this point.
 spi = machine.SPI(1,
-                  baudrate=80000000,
+                  baudrate=DISPLAY_BAUDRATE,
                   sck=machine.Pin(board.SPI_SCK),
                   mosi=machine.Pin(board.SPI_MOSI),
                   miso=machine.Pin(board.SPI_MISO))
 
-# The card is already initialized. Only the transport changes.
-# Gives the already-mounted SD card faster hardware SPI for data transfers.
+# The card is already initialized over sd_spi. From here on, FastSDCard's
+# readblocks/writeblocks/ioctl will detect self.spi is spi and throttle
+# the shared bus down to SD_BAUDRATE around every transfer.
 if sd is not None:
     sd.spi = spi
 
@@ -69,6 +113,7 @@ class Environment:
         self.sts = None
         self.shell = None
         self.audio = None
+        self.sd_busy = False
         self.update_font(font)
         self.update_icon_font(icon_font)
 
@@ -164,7 +209,10 @@ def scheduled_fast(_):
     if tdeck_trk.get_click():
         env.kvm.inject("\x1b")
 
-    env.term.draw()
+    # Skip this tick's redraw rather than racing an in-flight SD transfer
+    # that has the shared SPI bus temporarily parked at SD_BAUDRATE.
+    if not env.sd_busy:
+        env.term.draw()
 
 def fast_loop(_):
     # Use schedule to keep the ISR (Interrupt Service Routine) light.
@@ -179,6 +227,8 @@ def fast_loop(_):
 
 # The SLOW loop (1000ms)
 def scheduled_slow(_):
+    # refresh() itself checks env.sd_busy before touching the display --
+    # see statusbar.py.
     env.sts.refresh()
 
 def slow_loop(_):

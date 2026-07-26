@@ -149,6 +149,125 @@ class Shell:
     def register(self, name, func):
         self.apps[name] = Command(func, self.env)
 
+    def _run_builtin(self, cmd_name, args):
+        """Handles shell builtins that live outside the app registry
+        (fav, clear, dbgrst, echo, exit, help) -- shared between the
+        interactive loop and _run_rc_file() so builtins behave
+        identically from both, instead of only working when typed.
+        Returns True if cmd_name was one of these."""
+        if cmd_name == "fav":
+            if not args:
+                # List all aliases
+                if not self.aliases:
+                    print("No favs set. Use: fav <name> <command>")
+                for k, v in sorted(self.aliases.items()):
+                    print(f"  {k} -> {v}")
+
+            elif args[0] == "rm" and len(args) == 2:
+                # Remove an alias (e.g., fav rm myftp)
+                key = args[1]
+                if key in self.aliases:
+                    del self.aliases[key]
+                    self._save_aliases()
+                    print(f"Removed fav '{key}'.")
+                else:
+                    print(f"fav '{key}' not found.")
+
+            elif len(args) >= 2:
+                # Create or update an alias
+                key = args[0]
+
+                # Reconstruct the target command, restoring quotes if spaces exist
+                val_parts = []
+                for a in args[1:]:
+                    val_parts.append(f'"{a}"' if ' ' in a else a)
+
+                val = " ".join(val_parts)
+                self.aliases[key] = val
+                self._save_aliases()
+                print(f"Saved fav: {key} -> {val}")
+            return True
+
+        if cmd_name == "clear":
+            print("\033[2J\033[H", end="")
+            return True
+
+        if cmd_name == "dbgrst":
+            import machine
+            import vt
+            _reset_names = {
+                machine.PWRON_RESET: "PWRON_RESET (power-on)",
+                machine.HARD_RESET: "HARD_RESET (panic / external reset)",
+                machine.WDT_RESET: "WDT_RESET (watchdog timeout)",
+                machine.DEEPSLEEP_RESET: "DEEPSLEEP_RESET (woke from deep sleep)",
+                machine.SOFT_RESET: "SOFT_RESET (soft reboot)",
+            }
+            _reset_cause = machine.reset_cause()
+            print("Last reset cause: %s [%d]" % (_reset_names.get(_reset_cause, "UNKNOWN"), _reset_cause))
+
+            # machine.reset_cause() buckets several distinct ESP-IDF
+            # reset reasons (e.g. INT_WDT/TASK_WDT/the RTC-level WDT)
+            # into one WDT_RESET -- vt.reset_reason() surfaces the raw
+            # esp_reset_reason_t value so they can be told apart.
+            _esp_reset_names = {
+                0: "ESP_RST_UNKNOWN",
+                1: "ESP_RST_POWERON",
+                2: "ESP_RST_EXT",
+                3: "ESP_RST_SW",
+                4: "ESP_RST_PANIC",
+                5: "ESP_RST_INT_WDT",
+                6: "ESP_RST_TASK_WDT",
+                7: "ESP_RST_WDT (RTC-level watchdog)",
+                8: "ESP_RST_DEEPSLEEP",
+                9: "ESP_RST_BROWNOUT",
+                10: "ESP_RST_SDIO",
+            }
+            _esp_reset_cause = vt.reset_reason()
+            print("ESP reset reason: %s [%d]" % (
+                _esp_reset_names.get(_esp_reset_cause, "UNKNOWN"), _esp_reset_cause))
+            return True
+
+        if cmd_name == "echo":
+            print(" ".join(args))
+            return True
+
+        if cmd_name == "exit":
+            self.running = False
+            return True
+
+        if cmd_name == "help":
+            sorted_apps = sorted(self.apps.keys())
+            print("Available commands:", ", ".join(sorted_apps))
+            return True
+
+        return False
+
+    def _run_rc_file(self):
+        """Runs startup commands from .shellrc. Checks /flash first,
+        falling back to /sd"""
+        for path in ("/flash/.shellrc", "/sd/.shellrc"):
+            try:
+                f = open(path, "r")
+            except OSError:
+                continue
+
+            try:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = self.parse_args(line)
+                    cmd_name = parts[0]
+                    args = parts[1:]
+                    if self._run_builtin(cmd_name, args):
+                        if not self.running:
+                            break  # rc called `exit` -- stop the rest of the file too
+                        continue
+                    self.execute(cmd_name, *args)
+            finally:
+                f.close()
+            break
+
     def parse_args(self, line):
         """Split a command line respecting single and double quoted strings."""
         parts = []
@@ -241,7 +360,9 @@ class Shell:
         ver = sys.implementation.version
         version_str = f"{ver[0]}.{ver[1]}.{ver[2]}"
         # TODO: move versioning to makefile
-        print(f"vtOS v0.1.12-dev; MicroPython v{version_str}\nType 'help' to see commands.")
+        print(f"vtOS v0.1.12; MicroPython v{version_str}\nType 'help' to see commands.")
+
+        self._run_rc_file()
 
         while self.running:
             try:
@@ -265,84 +386,7 @@ class Shell:
                     cmd_name = expanded_parts[0]
                     args = expanded_parts[1:] + args
 
-            if cmd_name == "fav":
-                if not args:
-                    # List all aliases
-                    if not self.aliases:
-                        print("No favs set. Use: fav <name> <command>")
-                    for k, v in sorted(self.aliases.items()):
-                        print(f"  {k} -> {v}")
-
-                elif args[0] == "rm" and len(args) == 2:
-                    # Remove an alias (e.g., fav rm myftp)
-                    key = args[1]
-                    if key in self.aliases:
-                        del self.aliases[key]
-                        self._save_aliases()
-                        print(f"Removed fav '{key}'.")
-                    else:
-                        print(f"fav '{key}' not found.")
-
-                elif len(args) >= 2:
-                    # Create or update an alias
-                    key = args[0]
-
-                    # Reconstruct the target command, restoring quotes if spaces exist
-                    val_parts = []
-                    for a in args[1:]:
-                        val_parts.append(f'"{a}"' if ' ' in a else a)
-
-                    val = " ".join(val_parts)
-                    self.aliases[key] = val
-                    self._save_aliases()
-                    print(f"Saved fav: {key} -> {val}")
-                continue
-
-            if cmd_name == "clear":
-                print("\033[2J\033[H", end="")
-                continue
-
-            elif cmd_name == "dbgrst":
-                import machine
-                import vt
-                _reset_names = {
-                    machine.PWRON_RESET: "PWRON_RESET (power-on)",
-                    machine.HARD_RESET: "HARD_RESET (panic / external reset)",
-                    machine.WDT_RESET: "WDT_RESET (watchdog timeout)",
-                    machine.DEEPSLEEP_RESET: "DEEPSLEEP_RESET (woke from deep sleep)",
-                    machine.SOFT_RESET: "SOFT_RESET (soft reboot)",
-                }
-                _reset_cause = machine.reset_cause()
-                print("Last reset cause: %s [%d]" % (_reset_names.get(_reset_cause, "UNKNOWN"), _reset_cause))
-
-                # machine.reset_cause() buckets several distinct ESP-IDF
-                # reset reasons (e.g. INT_WDT/TASK_WDT/the RTC-level WDT)
-                # into one WDT_RESET -- vt.reset_reason() surfaces the raw
-                # esp_reset_reason_t value so they can be told apart.
-                _esp_reset_names = {
-                    0: "ESP_RST_UNKNOWN",
-                    1: "ESP_RST_POWERON",
-                    2: "ESP_RST_EXT",
-                    3: "ESP_RST_SW",
-                    4: "ESP_RST_PANIC",
-                    5: "ESP_RST_INT_WDT",
-                    6: "ESP_RST_TASK_WDT",
-                    7: "ESP_RST_WDT (RTC-level watchdog)",
-                    8: "ESP_RST_DEEPSLEEP",
-                    9: "ESP_RST_BROWNOUT",
-                    10: "ESP_RST_SDIO",
-                }
-                _esp_reset_cause = vt.reset_reason()
-                print("ESP reset reason: %s [%d]" % (
-                    _esp_reset_names.get(_esp_reset_cause, "UNKNOWN"), _esp_reset_cause))
-                continue
-
-            elif cmd_name == "exit":
-                break
-
-            elif cmd_name == "help":
-                sorted_apps = sorted(self.apps.keys())
-                print("Available commands:", ", ".join(sorted_apps))
+            if self._run_builtin(cmd_name, args):
                 continue
 
             # Record in history, skipping consecutive duplicates

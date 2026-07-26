@@ -84,6 +84,7 @@ You can execute the following commands from the built-in shell:
 | `chess` | Basic chess game using unicode characters |
 | `clear` | Clears the screen |
 | `c2` | Codec 2 audio/voice codec encode/decode utility |
+| `echo` | Prints its arguments back out |
 | `fav` | Built-in shell aliases |
 | `fc` | Font Configuration Utility. Try `menu fc` |
 | `fm` | Starts the TUI File Manager |
@@ -110,6 +111,22 @@ You can execute the following commands from the built-in shell:
 | `zm` | Launches `dfrotz`, the ZMachine interpreter |
 
 To get out of the shell, type `exit`. This will bring you to the MicroPython shell, where you can type in python expressions. To get back to the built-in shell, type `sh` in the MicroPython shell.
+
+### Startup script (`.shellrc`)
+
+On launch, the shell runs commands from a `.shellrc` file, if one exists. It checks `/flash/.shellrc` first; if that doesn't exist, it falls back to `/sd/.shellrc` (only one of the two ever runs, never both). Each line is treated exactly like something you'd type at the shell prompt, including quoted arguments; blank lines and lines starting with `#` are ignored. Ending the file with `exit` skips the interactive prompt entirely and drops you straight into the MicroPython REPL after the rest of the file runs.
+
+Example `/flash/.shellrc`:
+```
+# connect to wifi
+nm connect MyNetwork "my wifi password"
+
+# default font
+fc terminus_mpy_12
+
+# LoRa region default
+loracfg 915
+```
 
 ## 🔨 How to Build (T-Deck)
 

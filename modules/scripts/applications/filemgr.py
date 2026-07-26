@@ -7,11 +7,6 @@ import os
 import sys
 
 file_association = {
-    "txt": "vi",
-    "md": "vi",
-    "py": "vi",
-    "conf": "vi",
-    "json": "vi",
     "dat": "zm",
     "z3": "zm",
     "z5": "zm",
@@ -48,6 +43,27 @@ def copy_file(src, dst):
 def joinpath(d, name):
     return (d + "/" + name).replace("//", "/")
 
+def run_script(path, env, tui):
+    """Executes an arbitrary .py file, giving it `env` as a global so it
+    can reach the same terminal/audio/shell state any registered app
+    gets. Unlike file_association apps (which are curated, TUI-aware
+    apps that manage their own screen), an ad hoc script is likely just
+    a few print() statements -- pause for a keypress afterward so that
+    output (or a traceback) is actually visible before wiping back to
+    the file manager."""
+    tui.cursor_show()
+    tui.clear_screen()
+    try:
+        with open(path) as f:
+            src = f.read()
+        exec(src, {"env": env, "__name__": "__main__"})
+    except Exception as e:
+        sys.print_exception(e)
+    print("\n[Press any key to continue]")
+    sys.stdin.read(1)
+    tui.cursor_hide()
+    tui.enter_altscreen()
+
 def show_error(win, tui, msg):
     dlg = win.make_dialog(msg,
                           x=2, y=win.inner_h//2-2,
@@ -72,7 +88,7 @@ def get_parent(current_dir):
         return new_path if new_path else "/"
     return current_dir
 
-def main(env, *args):
+def main(env, args):
     """ Creates a TUI for browsing and manipulating files """
 
     tui = env.tui
@@ -162,7 +178,9 @@ def main(env, *args):
                                 current_dir = new_path
                             else:
                                 ext = get_extension(new_path)
-                                if ext in file_association:
+                                if ext == "py":
+                                    run_script(new_path, env, tui)
+                                elif ext in file_association:
                                     cmd = file_association[ext]
                                     tui.cursor_show()
                                     tui.clear_screen()
@@ -175,13 +193,34 @@ def main(env, *args):
                             pass
                     break
 
-                if char == "w":
+                elif char == "e":    # edit
+                    selected_item = items[lst.selected]
+                    if selected_item != "..":
+                        new_path = joinpath(current_dir, selected_item)
+                        try:
+                            mode = os.stat(new_path)[0]
+                            if mode & 0x4000:
+                                show_error(win, tui, "Cannot edit directories")
+                            else:
+                                tui.cursor_show()
+                                tui.clear_screen()
+                                env.shell.execute("vi", new_path)
+                                tui.cursor_hide()
+                                tui.enter_altscreen()
+                        except OSError:
+                            pass
+                    break
+
+                elif char == "w":
                     lst.up()
+
                 elif char == "s":
                     lst.down()
+
                 elif char == "b":
                     current_dir = get_parent(current_dir)
                     break
+
                 elif char == "i":    # file/dir info
                     selected_item = items[lst.selected]
                     if selected_item == "..":
@@ -472,7 +511,8 @@ def main(env, *args):
                                  f"{BOLD}c: {CLR}copy file or directory\n"
                                  f"{BOLD}r: {CLR}rename file or directory\n"
                                  f"{BOLD}d: {CLR}delete file or directory\n"
-                                 f"{BOLD}n: {CLR}create new directory\n",
+                                 f"{BOLD}n: {CLR}create new directory\n"
+                                 f"{BOLD}e: {CLR}edit file in vi\n",
                                  1, 0,
                                  fg=252, bg=18)
 

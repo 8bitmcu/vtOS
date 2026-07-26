@@ -43,6 +43,15 @@ try:
                 f" \n"
                 f"Happy hacking!")
 
+    with open(".virc", "x") as f:
+        f.write(""""Vi themes, uncomment to use:
+"theme solarized
+"theme gruvbox
+"theme catppuccin
+"theme tokyonight
+"theme nord
+""")
+
     try:
         os.mkdir("menu")
     except:

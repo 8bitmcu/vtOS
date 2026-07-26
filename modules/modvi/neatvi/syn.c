@@ -98,6 +98,16 @@ void syn_tcget(int slot, int *r, int *g, int *b)
 	*b = tc_slots[slot][2];
 }
 
+// Clears the slot table so a theme switch (conf_theme_apply(), conf.c)
+// starts from an empty table instead of accumulating the previous
+// theme's colors alongside the new one -- same idea as syn_done()'s own
+// tc_slot_count reset below, just triggered by a theme change instead of
+// a whole new vi session.
+void syn_tcreset(void)
+{
+	tc_slot_count = 0;
+}
+
 void syn_context(int ctx1, int ctx2)
 {
 	syn_ctx1 = conf_hl(ctx1);
@@ -177,11 +187,11 @@ void syn_init(void)
 	for (i = 0; !conf_filetype(i, NULL, &pat) && i < LEN(pats); i++)
 		pats[i] = pat;
 	syn_ftrs = rset_make(i, pats, 0);
-	// Resolve conf.c's compile-time truecolor overrides (conf_tcdefs[])
-	// into real tc_slots[] entries -- must happen before the first
-	// syn_highlight() call, which is why this lives in syn_init() rather
-	// than somewhere lazier.
-	conf_hltcinit();
+	// Load the persisted theme (or fall back to the default), resolving
+	// conf.c's compile-time truecolor overrides into real tc_slots[]
+	// entries -- must happen before the first syn_highlight() call,
+	// which is why this lives in syn_init() rather than somewhere lazier.
+	conf_theme_load();
 }
 
 void syn_done(void)

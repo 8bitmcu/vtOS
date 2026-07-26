@@ -2188,6 +2188,16 @@ void modvi_main(char *filename, int width, int height)
 	files[0] = filename[0] ? filename : NULL;
 	files[1] = NULL;
 
+	// Nothing ever sets $HOME on this firmware, which otherwise leaves
+	// ex_init()'s own built-in rc-file support (source $HOME/.virc at
+	// startup, right below) permanently dead -- it's already correctly
+	// wired to the VFS bridge (ec_source() uses vfs_open()/vfs_read(),
+	// never raw POSIX fopen()), so simply giving it a HOME is enough to
+	// make /flash/.virc work as a real rc file, no new mechanism
+	// needed. Idempotent, so setting it unconditionally on every session
+	// is harmless.
+	setenv("HOME", "/flash", 1);
+
 	dir_init();
 	syn_init();
 	tag_init();

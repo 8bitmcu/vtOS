@@ -121,70 +121,205 @@ static int conf_hldefs[384] = {
 	[SM('U')] = 5,		/* message subject */
 };
 
-/* Compile-time truecolor overrides for conf_hldefs[] above. conf_hldefs
+/* Compile-time truecolor themes for conf_hldefs[] above. conf_hldefs
  * itself can't hold a #RRGGBB-style literal directly: it's a plain static
  * initializer, and resolving a hex triple into a real slot means calling
  * syn_tcslot() (see syn.c), which is a function call and so isn't a valid
- * constant expression in C. Instead, list overrides here by conf_hldefs
- * index (the same 'x'/SX()/SM() ids used above) and an 0xRRGGBB literal
- * (which *is* a compile-time constant -- only the syn_tcslot() call
- * itself is deferred), and conf_hltcinit() patches them into conf_hldefs
- * once, at startup (called from syn_init(), before any highlighting
- * runs). -1 for fgrgb/bgrgb means "no truecolor override for that
- * channel" -- use plain conf_hldefs[] entries above for anything that
- * only needs the existing 256-color palette.
+ * constant expression in C. Instead, each theme below lists overrides by
+ * conf_hldefs index (the same 'x'/SX()/SM() ids used above) and an
+ * 0xRRGGBB literal (which *is* a compile-time constant -- only the
+ * syn_tcslot() call itself is deferred). -1 for fgrgb/bgrgb means "no
+ * truecolor override for that channel".
  *
  * Example: a true-orange keyword highlight, bold, background unchanged:
  *   {'k', SYN_BD, 0xff8000, -1},
  */
-static const struct conf_tcdef {
+struct conf_tcdef {
 	int idx;
 	int extra;
 	long fgrgb;
 	long bgrgb;
-} conf_tcdefs[] = {
-	/* Gruvbox Dark (morhetz/gruvbox), bright variants -- the plain/dark
-	 * row reads too dim against this device's black background (same
-	 * reasoning as the earlier 256-color bump). 'i' (identifiers) is
-	 * deliberately absent: Gruvbox leaves plain text unstyled. */
-	{'k', SYN_BD, 0xfe8019, -1},	/* general keywords -- orange */
-	{'r', SYN_BD, 0xfb4934, -1},	/* control flow -- bright red */
-	{'o', 0,      0xfe8019, -1},	/* operators -- orange */
-	{'p', SYN_BD, 0x8ec07c, -1},	/* preprocessor directives -- bright aqua */
-	{'n', SYN_BD, 0x8ec07c, -1},	/* include directives -- bright aqua */
-	{'m', SYN_BD, 0x8ec07c, -1},	/* imported packages -- bright aqua */
-	{'t', SYN_BD, 0xfabd2f, -1},	/* built-in types -- bright yellow */
-	{'b', 0,      0xfabd2f, -1},	/* built-in functions -- bright yellow */
-	{'c', 0,      0x928374, -1},	/* comments -- gray */
-	{'d', SYN_BD, 0xb8bb26, -1},	/* top-level definitions -- bright green */
-	{'f', SYN_BD, 0xb8bb26, -1},	/* called functions -- bright green */
-	{'0', 0,      0xd3869b, -1},	/* numerical constants -- bright purple */
-	{'h', 0,      0xd3869b, -1},	/* character constants -- bright purple */
-	{'s', 0,      0xb8bb26, -1},	/* string literals -- bright green */
-	{'v', SYN_BD, 0xfabd2f, -1},	/* macros -- bright yellow */
-	{'x', SYN_BD, 0x83a598, -1},	/* identifier context -- bright blue */
 };
 
-void conf_hltcinit(void)
+/* Gruvbox Dark (morhetz/gruvbox) */
+static const struct conf_tcdef gruvbox_tcdefs[] = {
+	{'k', SYN_BD, 0xfe8019, -1},		/* general keywords -- orange */
+	{'r', SYN_BD, 0xfb4934, -1},		/* control flow -- bright red */
+	{'o', 0,      0xfe8019, -1},		/* operators -- orange */
+	{'p', SYN_BD, 0x8ec07c, -1},		/* preprocessor directives -- bright aqua */
+	{'n', SYN_BD, 0x8ec07c, -1},		/* include directives -- bright aqua */
+	{'m', SYN_BD, 0x8ec07c, -1},		/* imported packages -- bright aqua */
+	{'t', SYN_BD, 0xfabd2f, -1},		/* built-in types -- bright yellow */
+	{'b', 0,      0xfabd2f, -1},		/* built-in functions -- bright yellow */
+	{'c', 0,      0x928374, -1},		/* comments -- gray */
+	{'d', SYN_BD, 0xb8bb26, -1},		/* top-level definitions -- bright green */
+	{'f', SYN_BD, 0xb8bb26, -1},		/* called functions -- bright green */
+	{'0', 0,      0xd3869b, -1},		/* numerical constants -- bright purple */
+	{'h', 0,      0xd3869b, -1},		/* character constants -- bright purple */
+	{'s', 0,      0xb8bb26, -1},		/* string literals -- bright green */
+	{'v', SYN_BD, 0xfabd2f, -1},		/* macros -- bright yellow */
+	{'x', SYN_BD, 0x83a598, -1},		/* identifier context -- bright blue */
+};
+
+/* Solarized Dark (Ethan Schoonover, ethanschoonover.com/solarized) */
+static const struct conf_tcdef solarized_tcdefs[] = {
+	{'k', SYN_BD, 0x859900, -1},		/* general keywords -- green (Statement) */
+	{'r', SYN_BD, 0x859900, -1},		/* control flow -- green (Statement) */
+	{'p', SYN_BD, 0xcb4b16, -1},		/* preprocessor directives -- orange (PreProc) */
+	{'n', SYN_BD, 0xcb4b16, -1},		/* include directives -- orange (PreProc) */
+	{'m', SYN_BD, 0xcb4b16, -1},		/* imported packages -- orange (PreProc) */
+	{'t', SYN_BD, 0xb58900, -1},		/* built-in types -- yellow (Type) */
+	{'b', 0,      0xb58900, -1},		/* built-in functions -- yellow (Type) */
+	{'c', 0,      0x586e75, -1},		/* comments -- base01 */
+	{'d', SYN_BD, 0x268bd2, -1},		/* top-level definitions -- blue (Function) */
+	{'f', SYN_BD, 0x268bd2, -1},		/* called functions -- blue (Function) */
+	{'0', 0,      0x2aa198, -1},		/* numerical constants -- cyan (Constant) */
+	{'h', 0,      0x2aa198, -1},		/* character constants -- cyan (Constant) */
+	{'s', 0,      0x2aa198, -1},		/* string literals -- cyan (Constant) */
+	{'v', SYN_BD, 0xcb4b16, -1},		/* macros -- orange (PreProc) */
+	{'x', SYN_BD, 0x6c71c4, -1},		/* identifier context -- violet */
+};
+
+/* Catppuccin Mocha (catppuccin.com/palette */
+static const struct conf_tcdef catppuccin_tcdefs[] = {
+	{'k', SYN_BD, 0xcba6f7, -1},		/* general keywords -- mauve */
+	{'r', SYN_BD, 0xcba6f7, -1},		/* control flow -- mauve */
+	{'o', 0,      0x89dceb, -1},		/* operators -- sky */
+	{'p', SYN_BD, 0xf5c2e7, -1},		/* preprocessor directives -- pink */
+	{'n', SYN_BD, 0xf5c2e7, -1},		/* include directives -- pink */
+	{'m', SYN_BD, 0xf5c2e7, -1},		/* imported packages -- pink */
+	{'t', SYN_BD, 0xf9e2af, -1},		/* built-in types -- yellow */
+	{'b', 0,      0x89b4fa, -1},		/* built-in functions -- blue */
+	{'c', 0,      0x9399b2, -1},		/* comments -- overlay2 */
+	{'d', SYN_BD, 0x89b4fa, -1},		/* top-level definitions -- blue */
+	{'f', SYN_BD, 0x89b4fa, -1},		/* called functions -- blue */
+	{'0', 0,      0xfab387, -1},		/* numerical constants -- peach */
+	{'h', 0,      0xfab387, -1},		/* character constants -- peach */
+	{'s', 0,      0xa6e3a1, -1},		/* string literals -- green */
+	{'v', SYN_BD, 0xf9e2af, -1},		/* macros -- yellow */
+	{'x', SYN_BD, 0xb4befe, -1},		/* identifier context -- lavender */
+};
+
+/* Tokyo Night "Storm" (folke/tokyonight.nvim's default variant) */
+static const struct conf_tcdef tokyonight_tcdefs[] = {
+	{'k', SYN_BD, 0x9d7cd8, -1},		/* general keywords -- purple (@keyword) */
+	{'r', SYN_BD, 0x9d7cd8, -1},		/* control flow -- purple (@keyword) */
+	{'o', 0,      0x7dcfff, -1},		/* operators -- cyan */
+	{'p', SYN_BD, 0x7dcfff, -1},		/* preprocessor directives -- cyan */
+	{'n', SYN_BD, 0x7dcfff, -1},		/* include directives -- cyan */
+	{'m', SYN_BD, 0x7dcfff, -1},		/* imported packages -- cyan */
+	{'t', SYN_BD, 0xe0af68, -1},		/* built-in types -- yellow */
+	{'b', 0,      0x7aa2f7, -1},		/* built-in functions -- blue */
+	{'c', 0,      0x565f89, -1},		/* comments -- dedicated comment tone */
+	{'d', SYN_BD, 0xbb9af7, -1},		/* top-level definitions -- magenta (@keyword.function) */
+	{'f', SYN_BD, 0x7aa2f7, -1},		/* called functions -- blue */
+	{'0', 0,      0xff9e64, -1},		/* numerical constants -- orange */
+	{'h', 0,      0xff9e64, -1},		/* character constants -- orange */
+	{'s', 0,      0x9ece6a, -1},		/* string literals -- green */
+	{'v', SYN_BD, 0xe0af68, -1},		/* macros -- yellow */
+	{'x', SYN_BD, 0x1abc9c, -1},		/* identifier context -- teal */
+};
+
+/* Nord (nordtheme.com, Arctic Ice Studio)  */
+static const struct conf_tcdef nord_tcdefs[] = {
+	{'k', SYN_BD, 0x81a1c1, -1},		/* general keywords -- nord9 */
+	{'r', SYN_BD, 0x81a1c1, -1},		/* control flow -- nord9 */
+	{'o', 0,      0x81a1c1, -1},		/* operators -- nord9 */
+	{'p', SYN_BD, 0x5e81ac, -1},		/* preprocessor directives -- nord10 */
+	{'n', SYN_BD, 0x5e81ac, -1},		/* include directives -- nord10 */
+	{'m', SYN_BD, 0x5e81ac, -1},		/* imported packages -- nord10 */
+	{'t', SYN_BD, 0x8fbcbb, -1},		/* built-in types -- nord7 */
+	{'b', 0,      0x88c0d0, -1},		/* built-in functions -- nord8 */
+	{'c', 0,      0x4c566a, -1},		/* comments -- nord3 */
+	{'d', SYN_BD, 0x88c0d0, -1},		/* top-level definitions -- nord8 */
+	{'f', SYN_BD, 0x88c0d0, -1},		/* called functions -- nord8 */
+	{'0', 0,      0xb48ead, -1},		/* numerical constants -- nord15 */
+	{'h', 0,      0xb48ead, -1},		/* character constants -- nord15 */
+	{'s', 0,      0xa3be8c, -1},		/* string literals -- nord14 */
+	{'v', SYN_BD, 0xd08770, -1},		/* macros -- nord12 */
+	{'x', SYN_BD, 0xd8dee9, -1},		/* identifier context -- nord4 */
+};
+
+static const struct conf_theme {
+	const char *name;
+	const struct conf_tcdef *defs;
+	int ndefs;
+} conf_themes[] = {
+	{"gruvbox", gruvbox_tcdefs, LEN(gruvbox_tcdefs)},
+	{"solarized", solarized_tcdefs, LEN(solarized_tcdefs)},
+	{"catppuccin", catppuccin_tcdefs, LEN(catppuccin_tcdefs)},
+	{"tokyonight", tokyonight_tcdefs, LEN(tokyonight_tcdefs)},
+	{"nord", nord_tcdefs, LEN(nord_tcdefs)},
+};
+
+#define CONF_THEME_DEFAULT "gruvbox"
+
+/* Every index ANY theme above might touch -- reset to neutral (no color,
+ * no bold/italic) before applying a theme's own overrides, so switching
+ * from a theme that styles more entries (e.g. gruvbox's 'o') to one that
+ * doesn't (solarized) can't leave a stale value behind from whichever
+ * theme was active before. */
+static const int conf_theme_idxs[] = {
+	'.', 'k', 'r', 'o', 'p', 'n', 'm', 't', 'b', 'c', 'd', 'f', '0', 'h', 's', 'v', 'x'
+};
+
+static char conf_theme_name[32] = CONF_THEME_DEFAULT;
+
+char *conf_theme_current(void)
 {
+	return conf_theme_name;
+}
+
+int conf_theme_apply(char *name)
+{
+	const struct conf_theme *th = NULL;
 	int i;
-	for (i = 0; i < LEN(conf_tcdefs); i++) {
-		int mode = conf_tcdefs[i].extra;
-		if (conf_tcdefs[i].fgrgb >= 0) {
-			long rgb = conf_tcdefs[i].fgrgb;
+	for (i = 0; i < LEN(conf_themes); i++) {
+		if (!strcmp(conf_themes[i].name, name)) {
+			th = &conf_themes[i];
+			break;
+		}
+	}
+	if (!th)
+		return 1;
+	for (i = 0; i < LEN(conf_theme_idxs); i++)
+		conf_hldefs[conf_theme_idxs[i]] = 0;
+	syn_tcreset();
+	for (i = 0; i < th->ndefs; i++) {
+		int mode = th->defs[i].extra;
+		if (th->defs[i].fgrgb >= 0) {
+			long rgb = th->defs[i].fgrgb;
 			int slot = syn_tcslot((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
 			if (slot >= 0)
 				mode |= SYN_FGTC | SYN_FGMK(slot);
 		}
-		if (conf_tcdefs[i].bgrgb >= 0) {
-			long rgb = conf_tcdefs[i].bgrgb;
+		if (th->defs[i].bgrgb >= 0) {
+			long rgb = th->defs[i].bgrgb;
 			int slot = syn_tcslot((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
 			if (slot >= 0)
 				mode |= SYN_BGTC | SYN_BGMK(slot);
 		}
-		if (conf_tcdefs[i].idx >= 0 && conf_tcdefs[i].idx < LEN(conf_hldefs))
-			conf_hldefs[conf_tcdefs[i].idx] = mode;
+		if (th->defs[i].idx >= 0 && th->defs[i].idx < LEN(conf_hldefs))
+			conf_hldefs[th->defs[i].idx] = mode;
 	}
+	snprintf(conf_theme_name, sizeof(conf_theme_name), "%s", name);
+	return 0;
+}
+
+/* Persists the active theme name to flash -- deliberately NOT called from
+ * conf_theme_load() below. */
+
+/* Called once from syn_init(), before any highlighting runs (and so
+ * before ex_init() sources /flash/.virc -- see vimod_main()'s setenv()
+ * comment): applies CONF_THEME_DEFAULT as a starting point. That's the
+ * *only* persistence story now -- a "theme <name>" line in .virc is
+ * the official way to make a theme stick across restarts, sourced after
+ * this and so free to override it. No dedicated flash file for this
+ * (there used to be one, /flash/.vitheme; redundant once the rc file
+ * could do the same job with less bespoke code). */
+void conf_theme_load(void)
+{
+	conf_theme_apply(CONF_THEME_DEFAULT);
 }
 
 int conf_hlnum(char *name)

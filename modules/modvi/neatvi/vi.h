@@ -212,6 +212,7 @@ void syn_context(int fg, int bg);
 int syn_merge(int old, int new);
 int syn_tcslot(int r, int g, int b);
 void syn_tcget(int slot, int *r, int *g, int *b);
+void syn_tcreset(void);
 void syn_init(void);
 void syn_done(void);
 
@@ -228,7 +229,9 @@ char *conf_ecmd(void);
 int conf_hl(int id);
 int conf_hlnum(char *hl);
 void conf_hlset(int id, int hl);
-void conf_hltcinit(void);
+char *conf_theme_current(void);
+int conf_theme_apply(char *name);
+void conf_theme_load(void);
 char *kmap_map(int id, int key);
 void kmap_def(int id, int key, char *def);
 int kmap_find(char *name);

@@ -148,15 +148,21 @@ static void bufs_number(void)
 
 // No stat()/real mtime here -- see this port's plan for why true
 // timestamp-based conflict detection isn't meaningful on a single-user
-// embedded device. Callers only ever compare this against 0 (never
-// written/read yet) or check `>= 0` (file exists) -- both of bufs_save()'s
-// checks below still work correctly with this simplification: the
-// "don't silently overwrite an existing file" safety check is preserved
-// (readable() true -> 0 -> ">= 0"), only the "warn if it changed since we
-// last touched it" staleness check is disabled (0 is never "> " another 0).
+// embedded device. Must return a POSITIVE value for "exists", not 0:
+// bufs_init()'s sentinel for "this buffer has never been synced with a
+// real file" is -1 (bufs[idx].mtime = -1), and lbuf_write()'s overwrite
+// guard treats any ts <= 0 as that same "never synced" state. Confirmed
+// the hard way that returning 0 here breaks this distinction --
+// ec_edit() sets bufs[0].mtime = mtime(path) right after a normal,
+// successful file load, so a plain "exists" value of 0 made *every*
+// buffer look freshly-unsynced immediately after opening it, and the
+// very next :w on that same, just-opened file falsely tripped "file
+// exists" (lbuf_write()'s ts <= 0 branch) instead of saving normally.
+// 1 (or any positive value) still satisfies the existence check
+// (`>= 0`) but no longer collides with the "never synced" sentinel.
 static long mtime(char *path)
 {
-	return vfs_readable(path) ? 0 : -1;
+	return vfs_readable(path) ? 1 : -1;
 }
 
 char *ex_path(void)
@@ -1071,6 +1077,20 @@ static int ec_highlight(char *loc, char *cmd, char *arg, char *txt)
 	return 0;
 }
 
+static int ec_theme(char *loc, char *cmd, char *arg, char *txt)
+{
+	char *name = ex_skip(&arg);
+	if (!name) {
+		ex_show("theme: %s", conf_theme_current());
+		return 0;
+	}
+	if (conf_theme_apply(name)) {
+		ex_show("theme: unknown theme \"%s\"", name);
+		return 1;
+	}
+	return 0;
+}
+
 static int ec_mapkey(char *loc, char *cmd, char *arg, char *txt)
 {
 	char *src = ex_skip(&arg);
@@ -1462,6 +1482,7 @@ static struct excmd {
 	{"s", "substitute", ec_substitute},
 	{"so", "source", ec_source},
 	{"ta", "tag", ec_tag},
+	{"th", "theme", ec_theme},
 	{"tn", "tnext", ec_tnext},
 	{"tp", "tprev", ec_tprev},
 	{"tc", "tclose", ec_tclose},
@@ -1627,6 +1648,24 @@ static int ex_exec(char *ln)
 	while (*ln && !ret) {
 		char *loc, *cmd, *arg, *txt;
 		int idx;
+		char *skip = ln;
+		while (*skip == ' ' || *skip == '\t')
+			skip++;
+		// Traditional vi/ex comment convention (classic .exrc files): a
+		// line whose first non-blank character is '"' is a comment.
+		// Without this, such a line would fall through to ex_cmd()'s
+		// alpha-only scan, come back empty, and match the catch-all
+		// {"", "", ec_null} entry below -- which isn't a true no-op, it
+		// has real side effects (can advance xrow / set a region), so a
+		// "comment" in .virc could silently nudge the cursor position
+		// before the file even opens.
+		if (*skip == '"') {
+			while (*ln && *ln != '\n')
+				ln++;
+			if (*ln == '\n')
+				ln++;
+			continue;
+		}
 		loc = ex_loc(&ln);
 		cmd = ex_cmd(&ln);
 		idx = cmd ? ex_idx(cmd) : -1;
@@ -1682,7 +1721,7 @@ int ex_init(char **files)
 		struct fbuf fb;
 		fbuf_init(&fb);
 		fbuf_str(&fb, getenv("HOME"));
-		fbuf_str(&fb, "/.neatvi");
+		fbuf_str(&fb, "/.virc");
 		if (fbuf_buf(&fb) && vfs_readable(fbuf_buf(&fb)))
 			ec_source("", "so", fbuf_buf(&fb), NULL);
 	}

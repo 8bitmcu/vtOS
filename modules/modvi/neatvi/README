@@ -10,7 +10,7 @@ CONFIGURATION
 
 If the EXINIT environment variable is defined, Neatvi executes its
 contents as ex commands at startup.  Otherwise, it executes the ex
-commands in $HOME/.neatvi, if present.  They can set the value of
+commands in $HOME/.virc, if present.  They can set the value of
 Neatvi options, change syntax highlighting colours, define new or
 modify existing keymaps, or define q-commands.  To change syntax
 highlighting and text direction patterns, conf.h must be modified.

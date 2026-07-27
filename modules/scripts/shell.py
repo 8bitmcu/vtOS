@@ -70,6 +70,7 @@ class Shell:
         self.register("ftpd",        _app("bin.ftpd"))
         self.register("sftp",        _app("bin.sftp"))
         self.register("telnet",      _app("bin.telnet"))
+        self.register("telnetd",     _app("bin.telnetd"))
         self.register("ms",          _app("bin.minesweeper"))
         self.register("loracfg",     _app("bin.loracfg"))
         self.register("menu",        _app("bin.menu",       tui=True))

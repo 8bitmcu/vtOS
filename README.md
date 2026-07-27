@@ -89,7 +89,7 @@ You can execute the following commands from the built-in shell:
 | `fc` | Font Configuration Utility. Try `menu fc` |
 | `fm` | Starts the TUI File Manager |
 | `ftp` | FTP Client that mounts it's content as a VFS |
-| `ftpd` | Launches a FTP Server on `/` with user `admin` and pwd `admin` |
+| `ftpd` | Launches a FTP Server on `/` with user `admin` and pwd `admin`. Unencrypted. |
 | `gemini` | Gemini protocol browser; connect to a `gemini://` url, or use `menu gemini` for saved sites |
 | `gopher` | Gopher protocol browser; connect to a `gopher://` url, or use `menu gopher` for saved sites |
 | `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
@@ -97,16 +97,17 @@ You can execute the following commands from the built-in shell:
 | `lorachat` | A basic chatroom based on the LoRa radio |
 | `menu` | An interactive shortcut menu for commands |
 | `ms` | Opens the minesweeper clone |
-| `nm` | Starts the TUI Network Manager |
-| `play` | Audio player that supports WAV and MP3 |
-| `rec` | Audio recorder |
+| `nm` | TUI Network Manager. Can also be used as a command line tool |
+| `play` | Audio player that supports WAV, MP3 and C2 (Codec 2) encoded files. |
+| `rec` | Audio recorder that records to WAV or C2 (Codec 2). Note: Noise issues currently unresolved |
 | `rss` | RSS Reader; connect to a RSS url to retreive the articles, or use `menu rss` for saved feeds |
 | `sftp` | SFTP Client that mounts its content as a VFS |
 | `sftpd` | SFTP Server; runs in the background |
 | `ssh` | SSH Client; connect to a remote ssh server |
-| `sshd` | SSH Server; runs in the background |
+| `sshd` | SSH Server; runs in the background, shares this device's shell. |
 | `stream` | Streams internet radio (MP3 over HTTP); pass a URL, or use `menu stream` for saved stations |
 | `telnet` | Connects to a telnet server. try `menu telnet` |
+| `telnetd` | Telnet Server; runs in the background, shares this device's shell. Unencrypted. |
 | `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)). Includes 5 configurable themes, check `.virc` |
 | `vncd` | Launches a VNC Server. Known compatible with TigerVNC. Terribly slow |
 | `webvncd` | Launches a web "VNC"-like server. Faster than `vncd` |

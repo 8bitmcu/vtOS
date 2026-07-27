@@ -23,12 +23,12 @@ def apply():
 
         with open(".virc", "x") as f:
             f.write('''"Vi themes, uncomment to use:
-    "theme solarized
-    "theme gruvbox
-    "theme catppuccin
-    "theme tokyonight
-    "theme nord
-    ''')
+"theme solarized
+"theme gruvbox
+"theme catppuccin
+"theme tokyonight
+"theme nord
+''')
 
         try:
             os.mkdir("menu")
@@ -108,6 +108,24 @@ def apply():
                 "Solderpunk (Gemini's creator)": "gemini://zaibatsu.circumlunar.space/~solderpunk/",
                 "Cosmos (thread aggregator)": "gemini://cosmos.skyjake.fi/",
                 "CAPCOM (random capsules/month)": "gemini://gemini.circumlunar.space/capcom/",
+        }, f)
+
+        with open("menu/.gopher.json", "x") as f:
+            json.dump({
+                "Floodgap (gopher root)": "gopher://gopher.floodgap.com/",
+                "Veronica-2 (search portal)": "gopher://gopher.floodgap.com/1/v2",
+                "Veronica-2 (search gopherspace)": "gopher://gopher.floodgap.com/7/v2/vs",
+                "All known gopher servers": "gopher://gopher.floodgap.com/1/world",
+                "SDF (Unix community gopherhole)": "gopher://sdf.org/",
+                "Gopherpedia (Wikipedia gateway)": "gopher://gopherpedia.com/",
+                "Dilbert + misc (telefisk.org)": "gopher://telefisk.org/",
+                "Qualitative Idiosyncratic Xenodochium": "gopher://home.quix.us/",
+                "CNN news feed (codevoid.de)": "gopher://codevoid.de/1/cnn",
+                "Zaibatsu (Solderpunk's community)": "gopher://zaibatsu.circumlunar.space/",
+                "tilde.town (tilde community)": "gopher://tilde.town/",
+                "quux.org (long-running gopherhole)": "gopher://gopher.quux.org/",
+                "Bitreich (gopher-centric community)": "gopher://bitreich.org/",
+                "Gopher Project resources": "gopher://gopherproject.org/",
         }, f)
 
         with open("menu/.stream.json", "x") as f:

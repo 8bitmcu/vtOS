@@ -78,6 +78,7 @@ class Shell:
         self.register("irc",         _app("bin.irc",        tui=True))
         self.register("rss",         _app("bin.rss",        tui=True))
         self.register("gemini",      _app("bin.gemini",     tui=True))
+        self.register("gopher",      _app("bin.gopher",     tui=True))
         self.register("fc",          _app("bin.fontcfg",    tui=True))
         self.register("play",        _app("bin.player",     tui=True, audio=True))
         self.register("stream",      _app("bin.stream",     tui=True, audio=True))

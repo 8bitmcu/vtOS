@@ -91,6 +91,7 @@ You can execute the following commands from the built-in shell:
 | `ftp` | FTP Client that mounts it's content as a VFS |
 | `ftpd` | Launches a FTP Server on `/` with user `admin` and pwd `admin` |
 | `gemini` | Gemini protocol browser; connect to a `gemini://` url, or use `menu gemini` for saved sites |
+| `gopher` | Gopher protocol browser; connect to a `gopher://` url, or use `menu gopher` for saved sites |
 | `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
 | `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |

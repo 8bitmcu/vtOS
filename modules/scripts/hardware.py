@@ -159,6 +159,10 @@ def init_spi(env):
     if sd is not None:
         sd.spi = spi
 
+    # Stashed so bin/usbmsc.py can unmount/remount '/sd' and hand the raw
+    # block device to usb.device.msc.MSCInterface.
+    env.sd = sd
+
 
 def init_tft(env):
     # Initialze LCD

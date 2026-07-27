@@ -96,8 +96,9 @@ You can execute the following commands from the built-in shell:
 | `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |
 | `menu` | An interactive shortcut menu for commands |
-| `ms` | Opens the minesweeper clone |
+| `mines` | Opens the minesweeper clone |
 | `nm` | TUI Network Manager. Can also be used as a command line tool |
+| `ping` | Used to test the reachability of a given host |
 | `play` | Audio player that supports WAV, MP3 and C2 (Codec 2) encoded files. |
 | `rec` | Audio recorder that records to WAV or C2 (Codec 2). Note: Noise issues currently unresolved |
 | `rss` | RSS Reader; connect to a RSS url to retreive the articles, or use `menu rss` for saved feeds |
@@ -108,6 +109,7 @@ You can execute the following commands from the built-in shell:
 | `stream` | Streams internet radio (MP3 over HTTP); pass a URL, or use `menu stream` for saved stations |
 | `telnet` | Connects to a telnet server. try `menu telnet` |
 | `telnetd` | Telnet Server; runs in the background, shares this device's shell. Unencrypted. |
+| `usbmsc` | Shares `/sd` with your PC as a USB Mass Storage drive over the same USB-C cable used for flashing. |
 | `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)). Includes 5 configurable themes, check `.virc` |
 | `vncd` | Launches a VNC Server. Known compatible with TigerVNC. Terribly slow |
 | `webvncd` | Launches a web "VNC"-like server. Faster than `vncd` |

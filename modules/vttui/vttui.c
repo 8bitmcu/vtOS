@@ -153,8 +153,19 @@ static void write_repeat_str(const char *s, size_t slen, int n) {
 // Forward declarations: full definitions live in the VTBlock section below,
 // but VTList's wrap support (render_list_item_multiline / list_item_rows)
 // needs them earlier in the file.
-static int next_chunk_len(const char *s, int byte_len, int width);
+static int next_chunk_len(const char *s, int byte_len, int width, int *out_vis);
 static int line_display_rows(const char *s, int len, bool wrap, int width);
+// write_block_text re-injects fg/bg after any \033[0m / \033[m embedded in
+// the text -- render_label_raw and render_list_item need that same
+// reset-reinjection so a color reset mid-item doesn't leak the terminal's
+// true default background into the padding/rows drawn after it.
+static void write_block_text(const char *text, int len, uint32_t fg, uint32_t bg);
+// replay_ansi_state re-emits any escape sequences found in [start, end) --
+// render_list_item needs this for wrapped continuation rows, so a color
+// opened earlier in the same logical line (but not yet closed) carries
+// over onto the next screen row instead of reverting to fg/bg.
+static void replay_ansi_state(const char *start, const char *end, uint32_t fg,
+                              uint32_t bg);
 
 // ─── UTF-8 box drawing
 // ────────────────────────────────────────────────────────
@@ -178,31 +189,51 @@ static void render_label_raw(int start_x, int y, const char *text,
 
   // Split draw_width into: prefix spaces | text | suffix spaces
   int prefix = text_offset;
-  int chars = (int)text_len;
+  int len = (int)text_len;
   if (prefix < 0) {
     text -= prefix;
-    chars += prefix;
+    len += prefix;
     prefix = 0;
   }
-  if (prefix + chars > draw_width)
-    chars = draw_width - prefix;
-  if (chars < 0)
-    chars = 0;
-  int suffix = draw_width - prefix - chars;
+  if (len < 0)
+    len = 0;
+
+  // text may contain embedded ANSI escapes (e.g. a caller coloring part of
+  // the label), which take up bytes but zero screen columns -- clamping by
+  // raw byte length against draw_width (as this used to) either truncates
+  // mid-escape or, for short colored text, wrongly believes there's no
+  // room left for the suffix. next_chunk_len() bounds by *visible* width
+  // instead, atomically including/excluding whole escape sequences, and
+  // out_vis reports how many actual columns that consumed.
+  int budget = draw_width - prefix;
+  int vis = 0;
+  int chars = budget > 0 ? next_chunk_len(text, len, budget, &vis) : 0;
+  int suffix = draw_width - prefix - vis;
+  if (suffix < 0)
+    suffix = 0;
 
   write_spaces(prefix);
   if (chars > 0)
-    vttui_write(text, (size_t)chars);
+    write_block_text(text, chars, fg, bg);
   write_spaces(suffix);
 
   vttui_write_str("\033[0m");
 }
 
 // Arrow is stored as raw UTF-8 bytes (up to 4) so multi-byte chars work.
+//
+// prior/prior_len are the bytes of the same logical line that came before
+// `text` (i.e. earlier wrapped chunks already rendered on previous screen
+// rows), or NULL/0 if `text` is the start of the line. When non-empty,
+// any still-open color from those earlier chunks gets replayed onto this
+// row before the text itself -- without it, a color opened on an earlier
+// row wouldn't carry over, since vttui_begin() below always starts each
+// row fresh at the base fg/bg.
 static void render_list_item(int x, int y, const char *text, size_t text_len,
                              int width, uint32_t fg, uint32_t bg,
                              const uint8_t *arrow_bytes, int arrow_len,
-                             bool show_arrow, int left_pad) {
+                             bool show_arrow, int left_pad,
+                             const char *prior, size_t prior_len) {
   if (width <= 0)
     return;
   vttui_begin(x, y, fg, bg, false);
@@ -221,10 +252,20 @@ static void render_list_item(int x, int y, const char *text, size_t text_len,
   write_spaces(pad);
   remaining -= pad;
 
-  int chars = (int)text_len < remaining ? (int)text_len : remaining;
+  if (prior_len > 0)
+    replay_ansi_state(prior, prior + prior_len, fg, bg);
+
+  // text may contain embedded ANSI escapes (e.g. gemtext link/heading
+  // coloring) -- see the matching comment in render_label_raw for why
+  // clamping by raw byte length against `remaining` (a column count) is
+  // wrong, and why next_chunk_len()/out_vis is the fix.
+  int vis = 0;
+  int chars = remaining > 0 ? next_chunk_len(text, (int)text_len, remaining, &vis) : 0;
   if (chars > 0)
-    vttui_write(text, (size_t)chars);
-  remaining -= chars;
+    write_block_text(text, chars, fg, bg);
+  remaining -= vis;
+  if (remaining < 0)
+    remaining = 0;
 
   write_spaces(remaining);
   vttui_write_str("\033[0m");
@@ -264,10 +305,12 @@ static int render_list_item_multiline(int x, int y, const char *text,
       const char *pos = line_start;
       bool first_chunk = true;
       while ((first_chunk || remaining > 0) && row < max_rows) {
-        int cl = remaining > 0 ? next_chunk_len(pos, remaining, text_width) : 0;
+        int cl =
+            remaining > 0 ? next_chunk_len(pos, remaining, text_width, NULL) : 0;
         bool arrow_this_row = show_arrow && first_line && first_chunk;
         render_list_item(x, y + row, pos, (size_t)cl, width, fg, bg,
-                         arrow_bytes, arrow_len, arrow_this_row, left_pad);
+                         arrow_bytes, arrow_len, arrow_this_row, left_pad,
+                         line_start, (size_t)(pos - line_start));
         row++;
         if (cl == 0)
           break;
@@ -278,7 +321,8 @@ static int render_list_item_multiline(int x, int y, const char *text,
     } else {
       bool arrow_this_row = show_arrow && first_line;
       render_list_item(x, y + row, line_start, line_len, width, fg, bg,
-                       arrow_bytes, arrow_len, arrow_this_row, left_pad);
+                       arrow_bytes, arrow_len, arrow_this_row, left_pad,
+                       NULL, 0);
       row++;
     }
 
@@ -581,7 +625,7 @@ static mp_obj_t vttui_list_draw(mp_obj_t self_in) {
       while (row < vis_h) {
         render_list_item(item_x, item_y + item_row_offset + row, "", 0, item_w,
                          self->fg, self->bg, self->arrow, self->arrow_len,
-                         false, self->left_pad);
+                         false, self->left_pad, NULL, 0);
         row++;
       }
     }
@@ -600,7 +644,7 @@ static mp_obj_t vttui_list_draw(mp_obj_t self_in) {
 
       if (item_idx >= self->item_count) {
         render_list_item(item_x, row, "", 0, item_w, fg, bg, self->arrow,
-                         self->arrow_len, false, self->left_pad);
+                         self->arrow_len, false, self->left_pad, NULL, 0);
         continue;
       }
 
@@ -609,7 +653,7 @@ static mp_obj_t vttui_list_draw(mp_obj_t self_in) {
       size_t text_len;
       const char *text = mp_obj_str_get_data(item, &text_len);
       render_list_item(item_x, row, text, text_len, item_w, fg, bg, self->arrow,
-                       self->arrow_len, is_sel, self->left_pad);
+                       self->arrow_len, is_sel, self->left_pad, NULL, 0);
     }
   }
 
@@ -1118,8 +1162,13 @@ static void replay_ansi_state(const char *start, const char *end, uint32_t fg,
 
 // Returns the byte-length of the next display chunk containing up to `width`
 // visible characters.  ANSI escape sequences are skipped (not counted).
-// Multi-byte UTF-8 sequences count as one visible character.
-static int next_chunk_len(const char *s, int byte_len, int width) {
+// Multi-byte UTF-8 sequences count as one visible character. If out_vis is
+// non-NULL, the number of visible characters actually consumed (<= width)
+// is written there -- callers that need to know how many screen columns
+// the returned byte range occupies (as opposed to just its byte length)
+// can't get that any other way, since escape bytes inflate byte length
+// without occupying any columns.
+static int next_chunk_len(const char *s, int byte_len, int width, int *out_vis) {
   int vis = 0, i = 0;
   while (i < byte_len) {
     unsigned char c = (unsigned char)s[i];
@@ -1145,6 +1194,8 @@ static int next_chunk_len(const char *s, int byte_len, int width) {
         break;
     }
   }
+  if (out_vis)
+    *out_vis = vis;
   return i;
 }
 
@@ -1155,7 +1206,7 @@ static int line_display_rows(const char *s, int len, bool wrap, int width) {
   int rows = 0, remaining = len;
   const char *pos = s;
   while (remaining > 0) {
-    int cl = next_chunk_len(pos, remaining, width);
+    int cl = next_chunk_len(pos, remaining, width, NULL);
     if (cl == 0)
       break;
     rows++;
@@ -1212,8 +1263,9 @@ static mp_obj_t vttui_block_draw(mp_obj_t self_in) {
         const char *pos = ls;
         bool first_chunk = true;
         while (first_chunk || remaining > 0) {
-          int cl =
-              remaining > 0 ? next_chunk_len(pos, remaining, self->width) : 0;
+          int cl = remaining > 0
+                       ? next_chunk_len(pos, remaining, self->width, NULL)
+                       : 0;
           if (display_row >= skip_rows) {
             if (self->height > 0 && screen_row >= self->height)
               break;

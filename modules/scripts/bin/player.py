@@ -10,7 +10,7 @@ import os
 import sys
 import time
 
-import applications.c2
+import bin.c2
 
 def fmt_size(size):
     if size < 1024:
@@ -36,11 +36,11 @@ def main(env, args):
     display_name = file
     c2_tmp_file = None
     with open(file, "rb") as f:
-        magic = f.read(len(applications.c2.C2_MAGIC))
-    if magic == applications.c2.C2_MAGIC:
+        magic = f.read(len(bin.c2.C2_MAGIC))
+    if magic == bin.c2.C2_MAGIC:
         c2_tmp_file = file + ".wav"
         print(f"Decoding {file}...")
-        applications.c2.decode(file, c2_tmp_file)
+        bin.c2.decode(file, c2_tmp_file)
         file = c2_tmp_file
 
     vol = env.audio.volume()

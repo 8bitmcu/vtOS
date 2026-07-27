@@ -90,6 +90,7 @@ You can execute the following commands from the built-in shell:
 | `fm` | Starts the TUI File Manager |
 | `ftp` | FTP Client that mounts it's content as a VFS |
 | `ftpd` | Launches a FTP Server on `/` with user `admin` and pwd `admin` |
+| `gemini` | Gemini protocol browser; connect to a `gemini://` url, or use `menu gemini` for saved sites |
 | `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
 | `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |
@@ -105,7 +106,7 @@ You can execute the following commands from the built-in shell:
 | `sshd` | SSH Server; runs in the background |
 | `stream` | Streams internet radio (MP3 over HTTP); pass a URL, or use `menu stream` for saved stations |
 | `telnet` | Connects to a telnet server. try `menu telnet` |
-| `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)). Includes 5 configurable themes |
+| `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)). Includes 5 configurable themes, check `.virc` |
 | `vncd` | Launches a VNC Server. Known compatible with TigerVNC. Terribly slow |
 | `webvncd` | Launches a web "VNC"-like server. Faster than `vncd` |
 | `zm` | Launches `dfrotz`, the ZMachine interpreter |
@@ -118,14 +119,11 @@ On launch, the shell runs commands from a `.shellrc` file, if one exists. It che
 
 Example `/flash/.shellrc`:
 ```
-# connect to wifi
-nm connect MyNetwork "my wifi password"
-
 # default font
 fc terminus_mpy_12
 
-# LoRa region default
-loracfg 915
+# connect to wifi
+nm connect MyNetwork "my wifi password"
 ```
 
 ## 🔨 How to Build (T-Deck)

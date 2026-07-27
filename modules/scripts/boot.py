@@ -1,136 +1,128 @@
 import os
-import esp32
+import sys
+import machine
+import micropython
 
-try:
-    p = esp32.Partition.find(esp32.Partition.TYPE_DATA, label='vfs')[0]
-except IndexError:
-    print("Error: 'vfs' partition not found in partition table.")
+import env
+import hardware
+import vt
+import tdeck_kvm
+import tdeck_trk
+import statusbar
+import shell
+import defaults
 
-try:
-    os.mount(p, '/flash')
-    print("Filesystem mounted at /flash")
-except OSError as e:
-    # Error 19: ENODEV (Unformatted or corrupt)
-    # Error 22: EINVAL (Invalid filesystem)
-    if e.args[0] in (19, 22):
-        print("Filesystem not found. Formatting partition... (Please wait)")
-        try:
-            os.VfsLfs2.mkfs(p)
-            os.mount(p, '/flash')
-            print("Format successful and mounted at /flash")
-        except Exception as format_err:
-            print(f"Format failed: {format_err}")
-    else:
-        print(f"Unexpected mount error: {e}")
 
-try:
-    os.chdir('/flash')
+env = env.Environment(320, 240, "terminus_mpy_14", "siji_mpy_statusbar_12")
 
-    with open("WELCOME.md", "x") as f:
-        f.write(f"# Welcome to vtOS!\n"
-                f"This is your pocket hackable terminal.\n"
-                f"A few things to get you started:\n"
-                f" \n"
-                f"## Navigation\n"
-                f"Trackball up/down  - scroll terminal history\n"
-                f"Trackball left/right  - command history (up/down arrow)\n"
-                f"Trackball click  - send Escape\n"
-                f" \n"
-                f"## Tips\n"
-                f"- Type any command name and press Enter to run it\n"
-                f"- Files live in /flash (internal) and /sd (SD card, if inserted)\n"
-                f"- Type exit to get out of the shell, into Micropython repl\n"
-                f" \n"
-                f"Happy hacking!")
+hardware.init_flash()
+defaults.apply()
+hardware.init_board()
+hardware.init_spi(env)
+tft = hardware.init_tft(env)
+kbd = hardware.init_keyboard()
 
-    with open(".virc", "x") as f:
-        f.write('''"Vi themes, uncomment to use:
-"theme solarized
-"theme gruvbox
-"theme catppuccin
-"theme tokyonight
-"theme nord
-''')
+# Initialize ST engine
+env.term = vt.VT(tft, env)
+env.term.top_offset(env.status_height)
+env.term.set_icon_font(env.icon_font)
 
+
+# Combine ST & keyboard into one stream object
+env.kvm = tdeck_kvm.KVM(env.term, kbd)
+
+# Redirect to REPL
+os.dupterm(env.kvm)
+
+# Status bar component
+env.sts = statusbar.StatusBar(env.term, env, width=env.cols)
+env.sts.refresh()
+
+# The FAST loop (30ms)
+def scheduled_fast(_):
+
+    # Trackball horizontal movement translates into going up/down the shell command history
+    h_delta = tdeck_trk.get_scroll_horiz()
+    if abs(h_delta) > 1:
+        if h_delta < 0:
+            env.kvm.inject("\x1b[A") # Injects 'Up' key into REPL
+        else:
+            env.kvm.inject("\x1b[B") # Injects 'Down' key into REPL
+
+    # Trackball vertical movement translates into showing history
+    # Default history is 100 lines defined as HISTSIZE in st.h
+    v_delta = tdeck_trk.get_scroll_vert()
+    if abs(v_delta) > 1:
+        if v_delta < 0:
+            env.term.scrolldown()
+        else:
+            env.term.scrollup()
+
+    # Long clicking will raise KeyboardInterrupt (internally to tdeck_trk)
+    # Short click will inject escape
+    if tdeck_trk.get_click():
+        env.kvm.inject("\x1b")
+
+    # Skip this tick's redraw rather than racing an in-flight SD transfer
+    # that has the shared SPI bus temporarily parked at SD_BAUDRATE.
+    if not env.sd_busy:
+        env.term.draw()
+
+def fast_loop(_):
+    # Use schedule to keep the ISR (Interrupt Service Routine) light.
+    # schedule() raises RuntimeError if its queue is already full (e.g.
+    # mp_task is blocked in some other call and hasn't drained the
+    # previous tick yet) -- letting that escape uncaught from a hard-IRQ
+    # timer callback is unsafe, so just drop this tick instead.
     try:
-        os.mkdir("menu")
-    except:
+        micropython.schedule(scheduled_fast, 0)
+    except RuntimeError:
         pass
 
-    import json
-    with open("menu/.rss.json", "x") as f:
-        json.dump({
-            "BBC News World": "http://feeds.bbci.co.uk/news/world/rss.xml",
-            "The New York Times": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
-            "CNN Top Stories": "http://rss.cnn.com/rss/cnn_topstories.rss",
-            "NPR": "https://feeds.npr.org/1001/rss.xml",
-            "Hacker News": "https://news.ycombinator.com/rss",
-            "TechCrunch": "https://techcrunch.com/feed/",
-            "Ars Technica": "https://feeds.arstechnica.com/arstechnica/index",
-            "Hack A Day": "https://hackaday.com/blog/feed/",
-            "NASA": "https://www.nasa.gov/news-release/feed/",
-            "Nature": "https://www.nature.com/nature.rss",
-            "MIT Technology Review": "https://www.technologyreview.com/feed/",
-            "Quanta Magazine": "https://api.quantamagazine.org/feed/",
-    }, f)
+# The SLOW loop (1000ms)
+def scheduled_slow(_):
+    # refresh() itself checks env.sd_busy before touching the display --
+    # see statusbar.py.
+    env.sts.refresh()
 
-    with open("menu/.irc.json", "x") as f:
-        json.dump({
-            "Libera.Chat": "irc.libera.chat 6667",
-            "OFTC": "irc.oftc.net 6667",
-            "EFnet": "irc.efnet.org 6667",
-            "Rizon": "irc.rizon.net 6667",
-            "Undernet": "irc.undernet.org 6667",
-            "DALnet": "irc.dal.net 6667",
-            "QuakeNet": "irc.quakenet.org 6667",
-            "IRCnet": "irc.ircnet.com 6667"
-    }, f)
+def slow_loop(_):
+    # Update the status bar string (ANSI parsing happens here)
+    try:
+        micropython.schedule(scheduled_slow, 0)
+    except RuntimeError:
+        pass
 
-    with open("menu/.telnet.json", "x") as f:
-        json.dump({
-            "Telehack": "telehack.com",
-            "RetroCampus": "bbs.retrocampus.com"
-    }, f)
+# 30ms = ~33 FPS.
+draw_timer = machine.Timer(0)
+draw_timer.init(period=30, mode=machine.Timer.PERIODIC, callback=fast_loop)
 
-    with open("menu/.fc.json", "x") as f:
-        json.dump({
-            "Cozette 13px": "cozette_mpy_13",
-            "Gohu 11px": "gohu_mpy_11",
-            "Gohu 14px": "gohu_mpy_14",
-            "Scientifica 10px": "scientifica_mpy_10",
-            "Spleen 8px": "spleen_mpy_8",
-            "Spleen 12px": "spleen_mpy_12",
-            "Tazmen 11px": "tamzen_mpy_11",
-            "Terminus 12px": "terminus_mpy_12",
-            "Terminus 14px": "terminus_mpy_14",
-            "Unifont 16px": "unifont_mpy_16",
-    }, f)
+statusbar_timer = machine.Timer(1)
+statusbar_timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=slow_loop)
 
-    with open("menu/.loracfg.json", "x") as f:
-        json.dump({
-            "433 MHz (Asia & Global Alternative)": "433",
-            "868 MHz (Europe)": "868",
-            "915 MHz (North America & Australia)": "915",
-    }, f)
+# Choose your cursor:
 
-    with open("menu/.stream.json", "x") as f:
-        json.dump({
-            "SomaFM: Groove Salad (Ambient/Downtempo)": "http://ice1.somafm.com/groovesalad-128-mp3",
-            "SomaFM: DEF CON Radio (Hacker/Electronic)": "http://ice1.somafm.com/defcon-128-mp3",
-            "SomaFM: Secret Agent (Lounge/Spy Music)": "http://ice1.somafm.com/secretagent-128-mp3",
-            "181.fm: Energy 98 (Dance/Techno)": "http://listen.181fm.com/181-energy98_128k.mp3",
-            "KEXP 90.3 FM Seattle (Indie/Alternative)": "http://live-mp3-128.kexp.org/kexp128.mp3",
-            "Radio Paradise (Eclectic Rock/Pop)": "http://stream.radioparadise.com/mp3-128",
-            "181.fm: The Eagle (Classic Rock)": "http://listen.181fm.com/181-eagle_128k.mp3",
-            "181.fm: Awesome 80's (80s Pop/Rock)": "http://listen.181fm.com/181-awesome80s_128k.mp3",
-            "Radio Swiss Jazz (Classic Jazz)": "http://stream.srg-ssr.ch/m/rsj/mp3_128",
-            "WQXR 105.9 FM New York (Classical)": "http://stream.wqxr.org/wqxr.mp3",
-            "181.fm: True Blues (Blues)": "http://listen.181fm.com/181-blues_128k.mp3",
-            "181.fm: Power 181 (Top 40 Hits)": "http://listen.181fm.com/181-power_128k.mp3",
-            "181.fm: The Mix (Variety Pop)": "http://listen.181fm.com/181-themix_128k.mp3",
-            "181.fm: Old School HipHop/RnB (Hip-Hop)": "http://listen.181fm.com/181-oldschool_128k.mp3",
-    }, f)
+# Beam Cursor
+sys.stdout.write("\x1b[ 6 q")
 
-except:
-    pass
+# Underline Cursor
+#sys.stdout.write("\x1b[ 4 q")
+
+# Block Cursor (default)
+#sys.stdout.write("\x1b[ 2 q")
+
+class Cmd:
+    def __init__(self, func):
+        self.func = func
+    def __repr__(self):
+        self.func()
+        return ""
+
+env.shell = shell.Shell(env)
+
+# quick way to return to the shell from MicroPython
+# just type `sh` into MicroPython to return to our shell
+sh = Cmd(env.shell.run)
+
+# "REPL" into a custom, simple shell
+env.shell.run()
 

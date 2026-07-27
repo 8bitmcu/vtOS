@@ -6,7 +6,7 @@
 
 import sys
 import json
-import board
+import hardware
 
 def _app(module, tui=False, audio=False, rec=False, radio=False):
     def _run(env, *args):
@@ -14,65 +14,18 @@ def _app(module, tui=False, audio=False, rec=False, radio=False):
             if not hasattr(env, 'tui') or env.tui is None:
                 import vttui
                 env.tui = vttui.VTTUI(env, env.cols, env.rows)
+
         if audio:
             if not hasattr(env, 'audio') or env.audio is None:
-                import audioplayer
-                env.audio = audioplayer.AudioPlayer(bck=board.I2S_BCK,
-                                                    ws=board.I2S_WS,
-                                                    dout=board.I2S_DOUT)
+                hardware.init_audio(env)
+
         if rec:
             if not hasattr(env, 'rec') or env.rec is None:
-                import audioplayer
-                env.rec = audioplayer.AudioRecorder(mclk=board.ES7210_MCLK,
-                                                    bck=board.ES7210_SCK,
-                                                    ws=board.ES7210_LRCK,
-                                                    din=board.ES7210_DIN,
-                                                    i2c_sda=board.I2C_SDA,
-                                                    i2c_scl=board.I2C_SCL,
-                                                    i2s_num=1,
-                                                    channels=1,
-                                                    mic_gain=9,
-                                                    dma_buf_count=6,
-                                                    sample_rate=8000,
-                                                    mclk_ratio=512,
-                                                    i2c_shared=True)
+                hardware.init_mic(env)
 
         if radio:
             if not hasattr(env, 'radio') or env.radio is None:
-                import lora
-                lr = lora.LoRa(cs=board.RADIO_CS,
-                               dio1=board.RADIO_DIO1,
-                               rst=board.RADIO_RST,
-                               busy=board.RADIO_BUSY,
-                               sck=board.SPI_SCK,
-                               miso=board.SPI_MISO,
-                               mosi=board.SPI_MOSI)
-
-                try:
-                    with open("/flash/.radio.json", "r") as f:
-                        config = json.load(f)
-                except Exception as e:
-                    print("Failed to load radio config. Have you run loracfg?")
-                    return
-
-                try:
-                    lr.begin(freq=float(config["freq"]),
-                             bw=board.RADIO_BANDWIDTH,
-                             sf=board.RADIO_SF,
-                             cr=board.RADIO_CR,
-                             sync_word=0x12,
-                             power=int(config["pwr"]))
-                except Exception as e:
-                    print(f"Radio initialization failed: {e}")
-                    return
-
-                errors = lr.get_device_errors()
-                if errors != 0x0000:
-                    print(f"SX1262 device errors: 0x{errors:04X}")
-                    return
-
-                env.radio = lr
-
+                hardware.init_radio(env)
 
         app_module = __import__(module, None, None, [''])
         app_module.main(env, args)
@@ -105,30 +58,31 @@ class Shell:
         self.alias_file = "/flash/.favs.json"
         self._load_aliases()
 
-        self.register("ping",        _app("applications.ping"))
-        self.register("sshd",        _app("applications.sshd"))
-        self.register("ssh",         _app("applications.ssh"))
-        self.register("sftpd",       _app("applications.sftpd"))
-        self.register("webvncd",     _app("applications.webvncd"))
-        self.register("vncd",        _app("applications.vncd"))
-        self.register("chess",       _app("applications.chess"))
-        self.register("c2",          _app("applications.c2"))
-        self.register("ftp",         _app("applications.ftp"))
-        self.register("ftpd",        _app("applications.ftpd"))
-        self.register("sftp",        _app("applications.sftp"))
-        self.register("telnet",      _app("applications.telnet"))
-        self.register("ms",          _app("applications.minesweeper"))
-        self.register("loracfg",     _app("applications.loracfg"))
-        self.register("menu",        _app("applications.menu",       tui=True))
-        self.register("nm",          _app("applications.netmgr",     tui=True))
-        self.register("fm",          _app("applications.filemgr",    tui=True))
-        self.register("irc",         _app("applications.irc",        tui=True))
-        self.register("rss",         _app("applications.rss",        tui=True))
-        self.register("fc",          _app("applications.fontcfg",    tui=True))
-        self.register("play",        _app("applications.player",     tui=True, audio=True))
-        self.register("stream",      _app("applications.stream",     tui=True, audio=True))
-        self.register("lorachat",    _app("applications.lorachat",   tui=True, radio=True))
-        self.register("rec",         _app("applications.rec",        rec=True))
+        self.register("ping",        _app("bin.ping"))
+        self.register("sshd",        _app("bin.sshd"))
+        self.register("ssh",         _app("bin.ssh"))
+        self.register("sftpd",       _app("bin.sftpd"))
+        self.register("webvncd",     _app("bin.webvncd"))
+        self.register("vncd",        _app("bin.vncd"))
+        self.register("chess",       _app("bin.chess"))
+        self.register("c2",          _app("bin.c2"))
+        self.register("ftp",         _app("bin.ftp"))
+        self.register("ftpd",        _app("bin.ftpd"))
+        self.register("sftp",        _app("bin.sftp"))
+        self.register("telnet",      _app("bin.telnet"))
+        self.register("ms",          _app("bin.minesweeper"))
+        self.register("loracfg",     _app("bin.loracfg"))
+        self.register("menu",        _app("bin.menu",       tui=True))
+        self.register("nm",          _app("bin.netmgr",     tui=True))
+        self.register("fm",          _app("bin.filemgr",    tui=True))
+        self.register("irc",         _app("bin.irc",        tui=True))
+        self.register("rss",         _app("bin.rss",        tui=True))
+        self.register("gemini",      _app("bin.gemini",     tui=True))
+        self.register("fc",          _app("bin.fontcfg",    tui=True))
+        self.register("play",        _app("bin.player",     tui=True, audio=True))
+        self.register("stream",      _app("bin.stream",     tui=True, audio=True))
+        self.register("lorachat",    _app("bin.lorachat",   tui=True, radio=True))
+        self.register("rec",         _app("bin.rec",        rec=True))
         self.register("vi",          _app("modvi"))
         self.register("zm",          _app("modzm"))
 
@@ -360,7 +314,7 @@ class Shell:
         ver = sys.implementation.version
         version_str = f"{ver[0]}.{ver[1]}.{ver[2]}"
         # TODO: move versioning to makefile
-        print(f"vtOS v0.1.12; MicroPython v{version_str}\nType 'help' to see commands.")
+        print(f"vtOS v0.1.13-dev; MicroPython v{version_str}\nType 'help' to see commands.")
 
         self._run_rc_file()
 

@@ -7,7 +7,7 @@
 import os
 import sys
 import time
-import applications.c2
+import bin.c2
 
 def fmt_size(size):
     if size < 1024:
@@ -47,7 +47,7 @@ def main(env, args):
     if to_c2:
         print(f"Encoding to {file_name}...")
         wav_size = os.stat(record_path)[6]
-        frames = applications.c2.encode(record_path, file_name, applications.c2.DEFAULT_ENCODE_MODE)
+        frames = bin.c2.encode(record_path, file_name, bin.c2.DEFAULT_ENCODE_MODE)
         os.remove(record_path)
         c2_size = os.stat(file_name)[6]
         ratio_pct = (c2_size / wav_size * 100) if wav_size else 0

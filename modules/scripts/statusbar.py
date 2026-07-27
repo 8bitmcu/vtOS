@@ -8,7 +8,7 @@ import machine
 import time
 import network
 import gc
-import board
+import hardware
 
 # Siji characters
 UPTIME = chr(0xE015).encode()
@@ -24,7 +24,7 @@ class StatusBar:
         self.term = terminal
         self.env = env  # needed for env.audio.volume() -- audio is optional/lazy
         self.start_ticks = time.ticks_ms()
-        self.bat_pin = machine.ADC(machine.Pin(board.BAT_ADC))
+        self.bat_pin = machine.ADC(machine.Pin(hardware.BAT_ADC))
         self.bat_pin.atten(machine.ADC.ATTN_11DB)
         self.wlan = network.WLAN(network.STA_IF)
 

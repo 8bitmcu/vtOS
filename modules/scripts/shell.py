@@ -53,6 +53,7 @@ class Shell:
         self.apps = {}
         self.running = True
         self._history = []
+        self._rc_ran = False  # .shellrc runs once per boot -- see run()
 
         self.aliases = {}
         self.alias_file = "/flash/.favs.json"
@@ -262,7 +263,11 @@ class Shell:
         saved = ""                     # stash for in-progress line while browsing
 
         while True:
-            char = sys.stdin.read(1)
+            try:
+                char = sys.stdin.read(1)
+            except UnicodeError:
+                continue
+
             if not char:
                 continue
 
@@ -319,7 +324,11 @@ class Shell:
         # TODO: move versioning to makefile
         print(f"vtOS v0.1.13-dev; MicroPython v{version_str}\nType 'help' to see commands.")
 
-        self._run_rc_file()
+        self.running = True
+
+        if not self._rc_ran:
+            self._rc_ran = True
+            self._run_rc_file()
 
         while self.running:
             try:

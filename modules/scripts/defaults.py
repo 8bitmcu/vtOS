@@ -128,6 +128,24 @@ def apply():
                 "Gopher Project resources": "gopher://gopherproject.org/",
         }, f)
 
+        with open("menu/.menu.json", "x") as f:
+            json.dump({
+                "Chess": "chess",
+                "File Manager": "fm",
+                "Font Config": "menu fc",
+                "Gemini": "menu gemini",
+                "Gopher": "menu gopher",
+                "IRC": "menu irc",
+                "LoRa Config": "menu loracfg",
+                "Minesweeper": "mines",
+                "Network Manager": "nm",
+                "RSS Reader": "menu rss",
+                "Stream Radio": "menu stream",
+                "Telnet": "menu telnet",
+                "USB Mass Storage": "usbmsc",
+                "vi": "vi",
+        }, f)
+
         with open("menu/.stream.json", "x") as f:
             json.dump({
                 "SomaFM: Groove Salad (Ambient/Downtempo)": "http://ice1.somafm.com/groovesalad-128-mp3",

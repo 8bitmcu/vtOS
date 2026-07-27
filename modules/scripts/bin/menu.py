@@ -16,13 +16,9 @@ def save_menu(json_file, json_data):
         print(f"Failed to save json file: {e}")
 
 def main(env, args):
-    """ Creates a TUI for browsing command shortcuts """
+    """ Creates a TUI for browsing command shortcuts. """
 
-    app_name = args[0] if len(args) > 0 else None
-
-    if not app_name:
-        print("Usage: menu <command>")
-        return
+    app_name = args[0] if len(args) > 0 else "menu"
 
     tui = env.tui
     ui_state = "MAIN_MENU"
@@ -38,11 +34,13 @@ def main(env, args):
     except (OSError, ValueError):
         pass
 
+    win_title = "LAUNCHER" if app_name == "menu" else app_name.upper() + " MENU"
+
     while True:
         win = tui.make_window(
                 0, 0,
                 width=env.cols, height=env.rows,
-                title=app_name.upper() + " MENU",
+                title=win_title,
                 fg=252, bg=18)
 
         if ui_state == "MAIN_MENU":
@@ -67,10 +65,15 @@ def main(env, args):
                 char = sys.stdin.read(1)
                 if char == "\n" or char == "\r":
                     value = app.get(lst.value, "")
-                    args = env.shell.parse_args(value)
+                    parsed = env.shell.parse_args(value)
                     tui.clear_screen()
 
-                    if env.shell.execute(app_name, *args):
+                    if app_name == "menu":
+                        ran = env.shell.execute(*parsed) if parsed else False
+                    else:
+                        ran = env.shell.execute(app_name, *parsed)
+
+                    if ran:
                         tui.enter_altscreen()
                         tui.cursor_hide()
                     else:
@@ -123,7 +126,8 @@ def main(env, args):
                     break
 
         elif ui_state == "NEW_ENTRY":
-            new_lbl = win.make_label(f"Add new {app_name}: ",
+            new_entry_desc = "launcher entry" if app_name == "menu" else app_name
+            new_lbl = win.make_label(f"Add new {new_entry_desc}: ",
                                        0, 1,
                                        fg=252, bg=18,
                                        align="center")
@@ -135,7 +139,8 @@ def main(env, args):
                                  decorations=False,
                                  align="center")
 
-            args_input = win.make_input("Args:",
+            args_label = "Command:" if app_name == "menu" else "Args:"
+            args_input = win.make_input(args_label,
                                  0, 6,
                                  width=win.inner_w-2,
                                  fg=252, bg=18, input_bg=0,

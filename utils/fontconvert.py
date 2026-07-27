@@ -245,7 +245,7 @@ def main():
             # only, no FIRST/LAST/HEIGHT/WIDTH/REGULAR/BOLD. This module
             # is never used as a main font (never passed to
             # env.update_font()); it's loaded independently via
-            # VT.set_icon_font() (see vt_module.c) as a supplemental
+            # VT.set_icon_font() (see modvt.c) as a supplemental
             # double-width glyph source for ATTR_WIDE codepoints,
             # alongside whatever the main text font currently is.
             #

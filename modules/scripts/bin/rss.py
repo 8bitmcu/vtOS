@@ -6,7 +6,7 @@
 
 import gc
 import sys
-import xml
+import modxml
 import requests
 
 def main(env, args):
@@ -44,7 +44,7 @@ def main(env, args):
         rss_data = response.text
 
         fields_to_grab = ("title", "description")
-        items = xml.extract(rss_data, "item", fields_to_grab)
+        items = modxml.extract(rss_data, "item", fields_to_grab)
 
         for _, item in enumerate(items):
             title = item.get('title', 'N/A')

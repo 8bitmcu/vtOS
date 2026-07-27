@@ -268,7 +268,7 @@ extern Term term;
 // an in-progress escape sequence (CSIEscape for CSI, STREscape for OSC/
 // DCS/etc.); processing the status bar's own text through tputc() while
 // the main terminal is mid-sequence -- e.g. mid-way through one of
-// vttui's own SGR color codes -- silently clobbers whatever had been
+// modtui's own SGR color codes -- silently clobbers whatever had been
 // accumulated so far, since both paths share the same buffer.
 extern CSIEscape csiescseq;
 extern STREscape strescseq;

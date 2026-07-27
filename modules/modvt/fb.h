@@ -28,13 +28,13 @@ typedef struct _vt_VT_obj_t {
 } vt_VT_obj_t;
 
 // Persistent line for the status bar -- defined once in fb.c. Was
-// `static` right here in the header, which (since fb.c and vt_module.c
+// `static` right here in the header, which (since fb.c and modvt.c
 // both include it) meant each translation unit silently got its own
-// disconnected copy: vt_module.c's top_bar_invalidate()/
+// disconnected copy: modvt.c's top_bar_invalidate()/
 // bottom_bar_invalidate() were clearing a phantom array draw_bar_ansi()'s
 // dirty-check (fb.c) never actually read, so invalidate() has been a
 // no-op. A single real definition, shared via extern, is also what lets
-// vt_module.c's render_row() binding read the bars' actual Glyphs.
+// modvt.c's render_row() binding read the bars' actual Glyphs.
 extern Glyph top_line_now[256];
 extern Glyph top_line_last[256];
 

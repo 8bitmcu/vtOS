@@ -5,7 +5,7 @@ import micropython
 
 import env
 import hardware
-import vt
+import modvt
 import tdeck_kvm
 import tdeck_trk
 import statusbar
@@ -23,7 +23,7 @@ tft = hardware.init_tft(env)
 kbd = hardware.init_keyboard()
 
 # Initialize ST engine
-env.term = vt.VT(tft, env)
+env.term = modvt.VT(tft, env)
 env.term.top_offset(env.status_height)
 env.term.set_icon_font(env.icon_font)
 

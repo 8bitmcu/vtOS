@@ -12,8 +12,8 @@ def _app(module, tui=False, audio=False, rec=False, radio=False):
     def _run(env, *args):
         if tui:
             if not hasattr(env, 'tui') or env.tui is None:
-                import vttui
-                env.tui = vttui.VTTUI(env, env.cols, env.rows)
+                import modtui
+                env.tui = modtui.VTTUI(env, env.cols, env.rows)
 
         if audio:
             if not hasattr(env, 'audio') or env.audio is None:
@@ -152,7 +152,7 @@ class Shell:
 
         if cmd_name == "dbgrst":
             import machine
-            import vt
+            import modvt
             _reset_names = {
                 machine.PWRON_RESET: "PWRON_RESET (power-on)",
                 machine.HARD_RESET: "HARD_RESET (panic / external reset)",
@@ -165,7 +165,7 @@ class Shell:
 
             # machine.reset_cause() buckets several distinct ESP-IDF
             # reset reasons (e.g. INT_WDT/TASK_WDT/the RTC-level WDT)
-            # into one WDT_RESET -- vt.reset_reason() surfaces the raw
+            # into one WDT_RESET -- modvt.reset_reason() surfaces the raw
             # esp_reset_reason_t value so they can be told apart.
             _esp_reset_names = {
                 0: "ESP_RST_UNKNOWN",
@@ -180,7 +180,7 @@ class Shell:
                 9: "ESP_RST_BROWNOUT",
                 10: "ESP_RST_SDIO",
             }
-            _esp_reset_cause = vt.reset_reason()
+            _esp_reset_cause = modvt.reset_reason()
             print("ESP reset reason: %s [%d]" % (
                 _esp_reset_names.get(_esp_reset_cause, "UNKNOWN"), _esp_reset_cause))
             return True

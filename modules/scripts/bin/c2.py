@@ -12,7 +12,7 @@
 
 import os
 import struct
-import codec2
+import modc2
 
 SAMPLE_RATE = 8000  # codec2 is hardcoded to 8kHz internally, all modes
 CHANNELS = 1
@@ -21,7 +21,7 @@ BITS_PER_SAMPLE = 16
 C2_MAGIC = b"C2F1"
 C2_HEADER_LEN = 5  # magic (4) + mode (1)
 
-DEFAULT_ENCODE_MODE = codec2.MODE_1200
+DEFAULT_ENCODE_MODE = modc2.MODE_1200
 
 
 def _wav_read_header(f):
@@ -77,7 +77,7 @@ def _wav_write_header(f, data_bytes):
 
 def encode(input_path, output_path, mode):
     """input.wav (8kHz mono 16-bit PCM) -> output (.c2 container)."""
-    c2 = codec2.Codec2(mode)
+    c2 = modc2.Codec2(mode)
     try:
         frame_pcm_bytes = c2.samples_per_frame() * 2
         frames = 0
@@ -108,7 +108,7 @@ def decode(input_path, output_path):
             raise ValueError(f"{input_path} is not a .c2 file")
         mode = header[4]
 
-    c2 = codec2.Codec2(mode)
+    c2 = modc2.Codec2(mode)
     try:
         bytes_per_frame = c2.bytes_per_frame()
         frame_pcm_bytes = c2.samples_per_frame() * 2

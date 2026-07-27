@@ -122,7 +122,7 @@ void draw_bar_ansi(const char *text, size_t len, int bar_type) {
   // csiescseq/strescseq are the accumulation buffers for an in-progress
   // CSI/OSC-style escape sequence -- separate globals from `term`, shared
   // with whatever the main terminal is mid-way through parsing (e.g. one
-  // of vttui's own SGR color codes). Save and reset them the same way as
+  // of modtui's own SGR color codes). Save and reset them the same way as
   // term.c/term.line/term.esc above, or the status bar's own escape
   // sequences silently clobber the interrupted sequence's accumulated
   // bytes even though term.esc itself now correctly round-trips.

@@ -2141,15 +2141,15 @@ MP_DEFINE_CONST_OBJ_TYPE(vttui_type, MP_QSTR_VTTU, MP_TYPE_FLAG_NONE, make_new,
 // ─── Module
 // ───────────────────────────────────────────────────────────────────
 
-static const mp_rom_map_elem_t vttui_module_globals_table[] = {
-    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_vttui)},
+static const mp_rom_map_elem_t modtui_module_globals_table[] = {
+    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_modtui)},
     {MP_ROM_QSTR(MP_QSTR_VTTUI), MP_ROM_PTR(&vttui_type)},
 };
-static MP_DEFINE_CONST_DICT(vttui_module_globals, vttui_module_globals_table);
+static MP_DEFINE_CONST_DICT(modtui_module_globals, modtui_module_globals_table);
 
-const mp_obj_module_t vttui_user_cmodule = {
+const mp_obj_module_t modtui_user_cmodule = {
     .base = {&mp_type_module},
-    .globals = (mp_obj_dict_t *)&vttui_module_globals,
+    .globals = (mp_obj_dict_t *)&modtui_module_globals,
 };
 
-MP_REGISTER_MODULE(MP_QSTR_vttui, vttui_user_cmodule);
+MP_REGISTER_MODULE(MP_QSTR_modtui, modtui_user_cmodule);

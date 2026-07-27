@@ -1,5 +1,5 @@
 # Include the vt module
-include(${CMAKE_CURRENT_LIST_DIR}/vt/micropython.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/modvt/micropython.cmake)
 
 # Include the display driver module
 include(${CMAKE_CURRENT_LIST_DIR}/st7789/micropython.cmake)
@@ -17,10 +17,10 @@ include(${CMAKE_CURRENT_LIST_DIR}/tdeck_trk/micropython.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/modzm/micropython.cmake)
 
 # include the vttui (text ui) module
-include(${CMAKE_CURRENT_LIST_DIR}/vttui/micropython.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/modtui/micropython.cmake)
 
 # include the xml module (RSS Feeds)
-include(${CMAKE_CURRENT_LIST_DIR}/xml/micropython.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/modxml/micropython.cmake)
 
 # include the i2s module (audio)
 include(${CMAKE_CURRENT_LIST_DIR}/tdeck_i2s/micropython.cmake)
@@ -29,7 +29,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/tdeck_i2s/micropython.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/tdeck_lora/micropython.cmake)
 
 # include the codec2 module (low-bitrate speech codec)
-include(${CMAKE_CURRENT_LIST_DIR}/codec2/micropython.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/modc2/micropython.cmake)
 
 # include the modssh module (wolfSSH-backed)
 include(${CMAKE_CURRENT_LIST_DIR}/modssh/micropython.cmake)

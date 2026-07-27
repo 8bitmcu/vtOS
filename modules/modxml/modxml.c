@@ -22,7 +22,7 @@
 
 // ====================================================================
 // GENERIC DICTIONARY EXTRACTOR
-// xml.extract(xml_string, target_tag, ("field1", "field2"))
+// modxml.extract(xml_string, target_tag, ("field1", "field2"))
 // ====================================================================
 
 static mp_obj_t xml_extract(size_t n_args, const mp_obj_t *args) {
@@ -216,7 +216,7 @@ static void find_cb(void *ctx_in, const char *content, size_t len) {
   ((find_ctx_t *)ctx_in)->result = mp_obj_new_str(content, len);
 }
 
-// xml.find takes 2 args: (xml_str, tag)
+// modxml.find takes 2 args: (xml_str, tag)
 static mp_obj_t xml_find(mp_obj_t xml_str_in, mp_obj_t tag_in) {
   size_t xml_len;
   const char *xml = mp_obj_str_get_data(xml_str_in, &xml_len);
@@ -236,7 +236,7 @@ static void findall_cb(void *ctx_in, const char *content, size_t len) {
                      mp_obj_new_str(content, len));
 }
 
-// xml.findall takes 2 args: (xml_str, tag)
+// modxml.findall takes 2 args: (xml_str, tag)
 static mp_obj_t xml_findall(mp_obj_t xml_str_in, mp_obj_t tag_in) {
   size_t xml_len;
   const char *xml = mp_obj_str_get_data(xml_str_in, &xml_len);
@@ -254,17 +254,17 @@ static MP_DEFINE_CONST_FUN_OBJ_2(xml_findall_obj, xml_findall);
 // ====================================================================
 
 // Define the module's contents directly, no class wrapper needed
-static const mp_rom_map_elem_t xml_module_globals_table[] = {
-    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_xml)},
+static const mp_rom_map_elem_t modxml_module_globals_table[] = {
+    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_modxml)},
     {MP_ROM_QSTR(MP_QSTR_find), MP_ROM_PTR(&xml_find_obj)},
     {MP_ROM_QSTR(MP_QSTR_findall), MP_ROM_PTR(&xml_findall_obj)},
     {MP_ROM_QSTR(MP_QSTR_extract), MP_ROM_PTR(&xml_extract_obj)},
 };
-static MP_DEFINE_CONST_DICT(xml_module_globals, xml_module_globals_table);
+static MP_DEFINE_CONST_DICT(modxml_module_globals, modxml_module_globals_table);
 
-const mp_obj_module_t xml_user_cmodule = {
+const mp_obj_module_t modxml_user_cmodule = {
     .base = {&mp_type_module},
-    .globals = (mp_obj_dict_t *)&xml_module_globals,
+    .globals = (mp_obj_dict_t *)&modxml_module_globals,
 };
 
-MP_REGISTER_MODULE(MP_QSTR_xml, xml_user_cmodule);
+MP_REGISTER_MODULE(MP_QSTR_modxml, modxml_user_cmodule);

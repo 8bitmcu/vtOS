@@ -4,7 +4,7 @@
 # License: MIT
 #
 # Minimal RFB 3.8 server exposing the terminal screen over VNC. Pixels
-# come from vt.VT.render_row() (fb.c's render_row_rgb565()), rendered on
+# come from modvt.VT.render_row() (fb.c's render_row_rgb565()), rendered on
 # demand per row -- no persistent framebuffer.
 
 import binascii

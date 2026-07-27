@@ -1,5 +1,5 @@
 /*
- * codec2_alloc.c
+ * modc2_alloc.c
  *
  * codec2_malloc()/codec2_calloc()/codec2_free(): with __EMBEDDED__ defined
  * (see micropython.cmake), vendor/debug_alloc.h declares these as extern

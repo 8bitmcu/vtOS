@@ -2014,7 +2014,7 @@ int eschandle(uchar ascii) {
 // actually ships wide glyphs for (see WIDE_FONT/WIDE_CHARS/WIDE_FIRST in
 // fb.c): Chess Symbols (U+2654-265F, bundled into Unifont's own
 // WIDE_FONT block) and Siji's icon range (U+E000-E195, loaded as a
-// separate iconic font via VT.set_icon_font() -- see fb.h/vt_module.c).
+// separate iconic font via VT.set_icon_font() -- see fb.h/modvt.c).
 // Both are actual glyph widths in their respective fonts, not a font-
 // specific preference, so this stays a static table rather than reading
 // whatever's currently loaded. Extend this if/when more wide-glyph

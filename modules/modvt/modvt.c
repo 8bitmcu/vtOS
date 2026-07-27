@@ -183,8 +183,8 @@ static const mp_stream_p_t vt_stream_p = {
 
 //  Class Definition ---
 
-// Constructor: vt.VT()
-// Constructor: vt.VT(tft, env)
+// Constructor: modvt.VT()
+// Constructor: modvt.VT(tft, env)
 static mp_obj_t vt_VT_make_new(const mp_obj_type_t *type, size_t n_args,
                                size_t n_kw, const mp_obj_t *args) {
   // Expect exactly 2 positional arguments: display driver and environment
@@ -252,7 +252,7 @@ static mp_obj_t vt_VT_set_icon_font(mp_obj_t self_in, mp_obj_t font_obj) {
 }
 MP_DEFINE_CONST_FUN_OBJ_2(vt_VT_set_icon_font_obj, vt_VT_set_icon_font);
 
-// vt.render_row(y, buffer) -> int bytes written (0 if the row is out of
+// modvt.render_row(y, buffer) -> int bytes written (0 if the row is out of
 // range or buffer is missing/too small). y follows the same convention
 // as draw_bar_ansi()'s bar_type: -1 = top bar, -2 = bottom bar, 0..rows-1
 // = a terminal text row (via TLINE(), so scrollback-aware like the
@@ -347,17 +347,17 @@ static mp_obj_t vt_reset_reason(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(vt_reset_reason_obj, vt_reset_reason);
 
-static const mp_rom_map_elem_t vt_module_globals_table[] = {
-    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_vt)},
+static const mp_rom_map_elem_t modvt_module_globals_table[] = {
+    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_modvt)},
     {MP_ROM_QSTR(MP_QSTR_VT), MP_ROM_PTR(&vt_VT_type)},
     {MP_ROM_QSTR(MP_QSTR_reset_reason), MP_ROM_PTR(&vt_reset_reason_obj)},
 };
 
-static MP_DEFINE_CONST_DICT(vt_module_globals, vt_module_globals_table);
+static MP_DEFINE_CONST_DICT(modvt_module_globals, modvt_module_globals_table);
 
-const mp_obj_module_t vt_module = {
+const mp_obj_module_t modvt_module = {
     .base = {&mp_type_module},
-    .globals = (mp_obj_dict_t *)&vt_module_globals,
+    .globals = (mp_obj_dict_t *)&modvt_module_globals,
 };
 
-MP_REGISTER_MODULE(MP_QSTR_vt, vt_module);
+MP_REGISTER_MODULE(MP_QSTR_modvt, modvt_module);

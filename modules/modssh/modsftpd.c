@@ -46,7 +46,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/idf_additions.h" // xTaskCreatePinnedToCore, see modssh.c
-#include "esp_heap_caps.h" // heap_caps_malloc(MALLOC_CAP_SPIRAM), see modules/codec2/codec2_alloc.c
+#include "esp_heap_caps.h" // heap_caps_malloc(MALLOC_CAP_SPIRAM), see modules/modc2/modc2_alloc.c
 
 #include <wolfssh/ssh.h>
 #include <wolfssh/error.h>

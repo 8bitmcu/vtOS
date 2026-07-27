@@ -22,7 +22,7 @@
  * because nothing routes allocations there. Same PSRAM-preferring,
  * internal-RAM-or-PSRAM-fallback pattern already used by this codebase's
  * other heap-hungry consumers (modules/tdeck_i2s/ring_buf.h, modules/
- * codec2/codec2_alloc.c).
+ * modc2/modc2_alloc.c).
  *
  * Real (non-static, non-inline) function definitions, not macros -- these
  * get linked into wolfssl_lib (see micropython.cmake's target_sources())

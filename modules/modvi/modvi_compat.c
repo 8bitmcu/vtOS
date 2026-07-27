@@ -7,8 +7,8 @@
  * problem: modules/modssh/wolfssl_shim/psram_alloc.c (wolfSSL's own
  * allocator only ever reached internal SRAM, which this board's SFTP
  * server found reliably exhausted under real load despite 8MB of PSRAM
- * sitting idle) and modules/tdeck_i2s/ring_buf.h/modules/codec2/
- * codec2_alloc.c (the same prefer-PSRAM-then-fall-back-to-internal
+ * sitting idle) and modules/tdeck_i2s/ring_buf.h/modules/modc2/
+ * modc2_alloc.c (the same prefer-PSRAM-then-fall-back-to-internal
  * pattern for other heap-hungry consumers).
  */
 

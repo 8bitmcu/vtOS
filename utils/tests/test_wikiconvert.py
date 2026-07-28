@@ -140,3 +140,93 @@ def test_pack_and_unpack_article_record_with_no_links():
     link_ids, unpacked_body = wc.unpack_article_record(packed)
     assert link_ids == []
     assert unpacked_body == body
+
+
+# ---------------------------------------------------------------------------
+# namespace / redirect / disambiguation predicates
+# ---------------------------------------------------------------------------
+
+def test_is_article_namespace_accepts_ns_zero_as_string():
+    assert wc.is_article_namespace("0") is True
+
+
+def test_is_article_namespace_rejects_other_namespaces():
+    assert wc.is_article_namespace("14") is False   # Category
+    assert wc.is_article_namespace("6") is False    # File
+    assert wc.is_article_namespace("Talk") is False
+
+
+def test_parse_redirect_target_extracts_normalized_title():
+    assert wc.parse_redirect_target("#REDIRECT [[United States]]") == "United States"
+
+
+def test_parse_redirect_target_is_case_insensitive_and_allows_leading_space():
+    assert wc.parse_redirect_target("  #redirect [[united states]]") == "United states"
+
+
+def test_parse_redirect_target_strips_piped_display_text():
+    assert wc.parse_redirect_target("#REDIRECT [[United States|USA]]") == "United States"
+
+
+def test_parse_redirect_target_returns_none_for_non_redirect_page():
+    assert wc.parse_redirect_target("This is a normal article about ants.") is None
+
+
+def test_is_disambiguation_detects_disambig_template():
+    assert wc.is_disambiguation("'''Mercury''' may refer to:\n{{disambig}}") is True
+
+
+def test_is_disambiguation_detects_disambiguation_category():
+    text = "Foo may refer to several things.\n[[Category:Disambiguation pages]]"
+    assert wc.is_disambiguation(text) is True
+
+
+def test_is_disambiguation_false_for_regular_article():
+    assert wc.is_disambiguation("Ants are insects that live in colonies.") is False
+
+
+# ---------------------------------------------------------------------------
+# chunk_articles
+# ---------------------------------------------------------------------------
+
+def test_chunk_articles_empty_input_yields_nothing():
+    assert list(wc.chunk_articles([], chunk_size=100)) == []
+
+
+def test_chunk_articles_single_small_record():
+    chunks = list(wc.chunk_articles([("a", b"hello")], chunk_size=100))
+    assert len(chunks) == 1
+    data, placements = chunks[0]
+    assert data == b"hello"
+    assert placements == [("a", 0, 5)]
+
+
+def test_chunk_articles_combines_records_under_threshold():
+    records = [("a", b"12345"), ("b", b"67890")]
+    chunks = list(wc.chunk_articles(records, chunk_size=100))
+    assert len(chunks) == 1
+    data, placements = chunks[0]
+    assert data == b"1234567890"
+    assert placements == [("a", 0, 5), ("b", 5, 5)]
+
+
+def test_chunk_articles_flushes_at_threshold_boundary():
+    # chunk_size=10: two 5-byte records exactly fill one chunk without
+    # flushing early; a third record starts a fresh chunk.
+    records = [("a", b"12345"), ("b", b"67890"), ("c", b"xyz")]
+    chunks = list(wc.chunk_articles(records, chunk_size=10))
+    assert len(chunks) == 2
+    assert chunks[0][0] == b"1234567890"
+    assert chunks[0][1] == [("a", 0, 5), ("b", 5, 5)]
+    assert chunks[1][0] == b"xyz"
+    assert chunks[1][1] == [("c", 0, 3)]
+
+
+def test_chunk_articles_oversized_record_gets_its_own_chunk():
+    big = b"x" * 500
+    records = [("small1", b"abc"), ("big", big), ("small2", b"def")]
+    chunks = list(wc.chunk_articles(records, chunk_size=100))
+    assert len(chunks) == 3
+    assert chunks[0] == (b"abc", [("small1", 0, 3)])
+    assert chunks[1] == (big, [("big", 0, 500)])
+    assert chunks[2] == (b"def", [("small2", 0, 3)])

@@ -145,3 +145,80 @@ def unpack_article_record(buf):
         offset += _LINK_ID_STRUCT.size
     body = buf[offset:]
     return link_ids, body
+
+
+# ---------------------------------------------------------------------------
+# Page filtering
+# ---------------------------------------------------------------------------
+
+_ARTICLE_NAMESPACE = "0"
+
+_REDIRECT_RE = re.compile(
+    r"^\s*#REDIRECT\s*:?\s*\[\[\s*([^\]|#]+)", re.IGNORECASE
+)
+
+_DISAMBIG_RE = re.compile(
+    r"\{\{\s*disambig|\{\{\s*disambiguation\b|category:\s*disambiguation",
+    re.IGNORECASE,
+)
+
+
+def is_article_namespace(ns):
+    """ Simple English Wikipedia dumps mark every <page>'s namespace
+    with a <ns> child holding the namespace id as a string ("0" for
+    real articles; "14" Category, "6" File, etc, and named
+    pseudo-namespaces like "Talk" show up unparsed straight from a
+    <title> prefix in some callers). Only ns "0" is kept. """
+    return ns == "0"
+
+
+def parse_redirect_target(wikitext):
+    """ Returns the normalized target title if wikitext is a redirect
+    page (starts with '#REDIRECT [[Target]]', optionally piped), else
+    None. This is the dump-format-independent signal -- the XML
+    dump's own <redirect title="..."> attribute says the same thing,
+    but re-deriving it from the wikitext body means this function only
+    needs the page text, not the surrounding XML element. """
+    match = _REDIRECT_RE.match(wikitext)
+    if not match:
+        return None
+    return normalize_title(match.group(1))
+
+
+def is_disambiguation(wikitext):
+    """ Heuristic: Simple Wikipedia disambiguation pages carry a
+    {{disambig}}/{{disambiguation}} template or a Disambiguation
+    pages category link. Good enough to filter the bulk of them;
+    false negatives just leave a low-value stub article in, which is
+    harmless. """
+    return _DISAMBIG_RE.search(wikitext) is not None
+
+
+# ---------------------------------------------------------------------------
+# Chunking
+# ---------------------------------------------------------------------------
+
+def chunk_articles(records, chunk_size):
+    """ Groups an iterable of (key, packed_record_bytes) pairs into
+    concatenated chunks no larger than chunk_size, without ever
+    splitting a single record across chunks (a record bigger than
+    chunk_size on its own just becomes an oversized chunk of one).
+
+    Yields (chunk_bytes, placements) where placements is a list of
+    (key, offset_within_chunk, length) for every record folded into
+    that chunk, in order. """
+    buffer = bytearray()
+    placements = []
+
+    for key, data in records:
+        if buffer and len(buffer) + len(data) > chunk_size:
+            yield bytes(buffer), placements
+            buffer = bytearray()
+            placements = []
+
+        offset = len(buffer)
+        buffer += data
+        placements.append((key, offset, len(data)))
+
+    if placements:
+        yield bytes(buffer), placements

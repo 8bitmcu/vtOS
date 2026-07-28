@@ -13,6 +13,7 @@ file_association = {
     "mp3": "play",
     "wav": "play",
     "c2": "play",
+    "idx": "wiki",
 }
 
 def fmt_size(size):

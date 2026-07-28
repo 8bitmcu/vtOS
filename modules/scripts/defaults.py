@@ -145,6 +145,7 @@ def apply():
                 "Telnet": "menu telnet",
                 "USB Mass Storage": "usbmsc",
                 "vi": "vi",
+                "Offline Wikipedia": "wiki",
         }, f)
 
         with open("menu/.stream.json", "x") as f:

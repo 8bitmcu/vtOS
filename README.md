@@ -95,16 +95,17 @@ You can execute the following commands from the built-in shell:
 | `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
 | `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |
-| `mail` | POP3 email client; connect with `mail <host> <user> <password> [port]` (defaults to port 995/TLS) |
 | `menu` | An interactive shortcut menu for commands. |
 | `mines` | Opens the minesweeper clone |
 | `nm` | TUI Network Manager. Can also be used as a command line tool |
 | `ping` | Used to test the reachability of a given host |
 | `play` | Audio player that supports WAV, MP3 and C2 (Codec 2) encoded files. |
+| `pop3` | POP3 email client; connect with `pop3 <host> <user> <password> [port]` and read messages in `vi` |
 | `rec` | Audio recorder that records to WAV or C2 (Codec 2). Note: Noise issues currently unresolved |
 | `rss` | RSS Reader; connect to a RSS url to retreive the articles, or use `menu rss` for saved feeds |
 | `sftp` | SFTP Client that mounts its content as a VFS |
 | `sftpd` | SFTP Server; runs in the background |
+| `smtp` | SMTP email client; compose in `vi` and send with `smtp <host> <user> <password> [port]` |
 | `ssh` | SSH Client; connect to a remote ssh server |
 | `sshd` | SSH Server; runs in the background, shares this device's shell. |
 | `stream` | Streams internet radio (MP3 over HTTP); pass a URL, or use `menu stream` for saved stations |
@@ -129,6 +130,9 @@ fc terminus_mpy_12
 
 # connect to wifi
 nm connect MyNetwork "my wifi password"
+
+# launches the interactive menu
+menu
 ```
 
 ## 🔨 How to Build (T-Deck)

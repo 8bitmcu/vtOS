@@ -407,7 +407,7 @@ def main(env, args):
     port = int(args[3]) if len(args) > 3 else 995
 
     if not host or not user or password is None:
-        print("Usage: mail <host> <user> <password> [port]")
+        print("Usage: pop3 <host> <user> <password> [port]")
         return
 
     tui = env.tui

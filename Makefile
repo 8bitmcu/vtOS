@@ -26,7 +26,15 @@ BOARD_DIR = $(shell pwd)/boards
 
 FILE ?= main.py
 
-.PHONY: init build flash sync_files clean repl core_dump
+# Name of the docker image used for wikiconvert (has mwparserfromhell/requests
+# preinstalled, so you don't need them on the host -- see utils/Dockerfile)
+WIKICONVERT_IMAGE = vtos-wikiconvert
+
+# Extra args passed through to wikiconvert.py, e.g:
+#   make wikiconvert ARGS="--limit 500"
+ARGS ?=
+
+.PHONY: init build flash sync_files clean repl core_dump wikiconvert-image wikiconvert
 
 init:
 	docker build -t $(MP_REMOTE) .
@@ -112,6 +120,20 @@ core_dump:
 			espcoredump.py --chip esp32s3 --port $(PORT) \
 			info_corefile --core-format elf \
 			/opt/micropython/ports/esp32/build-$(BOARD)/micropython.elf"
+
+wikiconvert-image:
+	docker build -t $(WIKICONVERT_IMAGE) utils/
+
+# Runs utils/wikiconvert.py in Docker so you don't need mwparserfromhell/
+# requests installed locally. Output lands in utils/wiki-data/ (gitignored)
+# by default, same as running the script directly. Pass extra flags with
+# ARGS, e.g: make wikiconvert ARGS="--limit 500"
+wikiconvert: wikiconvert-image
+	docker run --rm \
+		-v $(shell pwd)/utils:/work \
+		$(WIKICONVERT_IMAGE) \
+		/bin/bash -c "python3 wikiconvert.py $(ARGS) && \
+			chown -R $(shell id -u):$(shell id -g) /work"
 
 debug:
 	docker run --rm -it --privileged \

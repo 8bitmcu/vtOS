@@ -138,6 +138,7 @@ def apply():
                 "Gopher": "menu gopher",
                 "IRC": "menu irc",
                 "LoRa Config": "menu loracfg",
+                "LoRa Chat": "lorachat",
                 "Minesweeper": "mines",
                 "Network Manager": "nm",
                 "RSS Reader": "menu rss",

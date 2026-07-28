@@ -13,8 +13,11 @@ DEFAULT_PORT = 70
 FG = 252
 BG = 18
 
+# A plain color index, not an escape string -- make_pager() owns link
+# coloring itself now rather than taking pre-colored text.
+LINK_COLOR = 45
+
 CLR      = "\x1b[0m"
-LINK_FG  = "\x1b[38;5;45m"
 ERR_FG   = "\x1b[38;5;210m"
 QUOTE_FG = "\x1b[38;5;244m"
 
@@ -179,34 +182,40 @@ def parse_gophermenu(text):
 
 
 def _render_lines(parsed):
-    """Turn parse_gophermenu() output into (display_string, target) pairs.
+    """Turn parse_gophermenu() output into (text, target) segments for
+    tui.make_pager(). target is a (host, port, itemtype, selector) tuple
+    for navigable lines, or None for "info"/"error"/"other" lines.
 
-    target is a (host, port, itemtype, selector) tuple for navigable
-    lines, or None for "info"/"error"/"other" lines.
+    Each gophermap line is still exactly one row -- a trailing '\\n' on
+    every entry forces the pager to break there instead of reflowing
+    consecutive short lines onto the same row. Link coloring is the
+    pager's job now (link_fg/cur_fg), but "error"/"other" aren't
+    navigable so their color is still embedded directly, same as before.
     """
     out = []
     for kind, text, host, port, selector, itemtype in parsed:
         target = (host, port, itemtype, selector)
         if kind == "menu":
-            out.append((LINK_FG + "-> " + text + CLR, target))
+            out.append(("-> " + text + "\n", target))
         elif kind == "text":
-            out.append((LINK_FG + "-- " + text + CLR, target))
+            out.append(("-- " + text + "\n", target))
         elif kind == "search":
-            out.append((LINK_FG + "? " + text + CLR, target))
+            out.append(("? " + text + "\n", target))
         elif kind == "error":
-            out.append((ERR_FG + "! " + text + CLR, None))
+            out.append((ERR_FG + "! " + text + CLR + "\n", None))
         elif kind == "other":
-            out.append((QUOTE_FG + "[ ] " + text + CLR, None))
+            out.append((QUOTE_FG + "[ ] " + text + CLR + "\n", None))
         else:  # info
-            out.append((text, None))
+            out.append((text + "\n", None))
     return out
 
 
 def _load(url, query=None):
     """Fetch url and return (status_kind, payload).
 
-    status_kind is one of "page", "error". payload is (display_lines,
-    links) for "page", or an error message for "error".
+    status_kind is one of "page", "error". payload is a list of
+    (text, target) segments (see _render_lines) for "page", or an
+    error message for "error".
     """
     try:
         resp = get(url, query=query)
@@ -219,15 +228,12 @@ def _load(url, query=None):
             # A search server's results come back directory-formatted,
             # same as a plain type-1 menu.
             parsed = parse_gophermenu(resp.text)
-            rendered = _render_lines(parsed)
-            links = {i: t for i, (_, t) in enumerate(rendered) if t}
-            display = [s for s, _ in rendered]
-            return "page", (display, links)
+            return "page", _render_lines(parsed)
         if itemtype == "0":
-            display = resp.text.split("\n")
-            if display and display[-1] == ".":
-                display = display[:-1]
-            return "page", (display, {})
+            lines = resp.text.split("\n")
+            if lines and lines[-1] == ".":
+                lines = lines[:-1]
+            return "page", [(line + "\n", None) for line in lines]
         return "error", "Unsupported item type: " + itemtype
     finally:
         resp.close()
@@ -248,7 +254,7 @@ def main(env, args):
     tui.cursor_hide()
 
     history = []
-    display, links = [], {}
+    segments = []
     prompt = ""
     error = ""
     pending_query = None
@@ -282,7 +288,7 @@ def main(env, args):
             gc.collect()
 
             if kind == "page":
-                display, links = payload
+                segments = payload
                 ui_state = "PAGE"
             else:
                 error = payload
@@ -290,27 +296,27 @@ def main(env, args):
 
         elif ui_state == "PAGE":
             tui.clear_screen()
-            status = tui.make_label("[w/s] nav | [b]ack | [q]uit",
+            status = tui.make_label("[w/s] nav | [n/N] links | [enter] open | [b]ack | [q]uit",
                                     0, env.rows-1,
                                     fg=0, bg=252,
                                     width=env.cols)
 
-            lst = tui.make_list(display if display else ["(empty page)"],
-                                x=0, y=0,
-                                width=env.cols, height=env.rows-1,
-                                fg=FG, bg=BG,
-                                arrow=">", left_pad=1,
-                                multiline=True, wrap=True)
+            pager = tui.make_pager(segments if segments else [("(empty page)", None)],
+                                   0, 0,
+                                   width=env.cols, height=env.rows-1,
+                                   fg=FG, bg=BG,
+                                   link_fg=LINK_COLOR, link_bg=BG,
+                                   cur_fg=BG, cur_bg=LINK_COLOR)
 
             while True:
-                lst.draw()
+                pager.draw()
                 status.draw()
                 tui.draw()
 
                 char = sys.stdin.read(1)
                 if char == "\n" or char == "\r":
-                    target = links.get(lst.index)
-                    if target:
+                    target = pager.current_link
+                    if target is not None:
                         host, port, itemtype, selector = target
                         history.append(url)
                         url = _build_url(host, port, itemtype, selector)
@@ -321,9 +327,13 @@ def main(env, args):
                             ui_state = "LOAD"
                         break
                 elif char == "w":
-                    lst.up()
+                    pager.up()
                 elif char == "s":
-                    lst.down()
+                    pager.down()
+                elif char == "n":
+                    pager.next_link()
+                elif char == "N":
+                    pager.prev_link()
                 elif char == "b":
                     if history:
                         url = history.pop()

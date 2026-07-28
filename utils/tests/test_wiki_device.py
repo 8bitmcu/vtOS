@@ -109,22 +109,27 @@ def test_render_article_and_link_navigation_round_trip(wiki_module, generated_wi
     try:
         ant_id = wiki.find_exact("Ant")
         title, body = wiki.load_article(ant_id)
-        rows = wiki_module._render_article(body)
+        segments = wiki_module._render_article(body)
 
-        link_targets = [target for _, target in rows if target is not None]
+        # _render_article() only splits on link markers -- it hands plain
+        # (text, value) segments to tui.make_pager(), which owns wrapping
+        # and link coloring itself now, so no ANSI codes belong here.
+        assert not any("\x1b" in text for text, _ in segments)
+
+        link_targets = [value for _, value in segments if value is not None]
         assert len(link_targets) == 2  # Insect, USA->United States redirect
 
         # Following each link target by record id lands on the expected
         # article -- this is exactly what the PAGE state's Enter handler
-        # does, without a re-search.
+        # does (via pager.current_link), without a re-search.
         linked_titles = set()
         for target_id in link_targets:
             linked_title, _ = wiki.load_article(target_id)
             linked_titles.add(linked_title)
         assert linked_titles == {"Insect", "United States"}
 
-        # Plain rows read back as ordinary display strings with no target.
-        plain_rows = [text for text, target in rows if target is None]
-        assert any("Ants are" in text for text in plain_rows)
+        # Plain segments read back as ordinary text with no value.
+        plain_text = [text for text, value in segments if value is None]
+        assert any("Ants are" in text for text in plain_text)
     finally:
         wiki.close()

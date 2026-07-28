@@ -1413,6 +1413,438 @@ static vttui_block_obj_t *create_block(mp_arg_val_t *args, int abs_x, int abs_y,
   return blk;
 }
 
+// ─── VTPager
+// ─────────────────────────────────────────────────────────────────
+//
+// A scrollable, continuously-reflowing text pager (like `less`) built from
+// a list of (text, value) segments -- value is None for plain text, or any
+// Python object identifying a link's destination for a "link" segment.
+// Unlike VTList (which navigates whole items and can't split one across a
+// partial scroll), VTPager wraps ALL segments together into one continuous
+// stream of rows, so a link's text can sit inline mid-paragraph and wrap
+// together with the plain text around it -- a row's runs[] can span
+// several segments. up()/down() scroll one row at a time; next_link()/
+// prev_link() move a separate "current link" cursor (wrapping at the
+// ends) and auto-scroll just enough to bring it on screen; .current_link
+// reads back that link's `value` for the caller to act on (e.g. on Enter).
+
+typedef struct _vttui_pager_run_t {
+  int segment;    // index into self->segments
+  int seg_offset; // byte offset within that segment's text
+  int seg_len;    // byte length of this run
+  int vis_width;  // screen columns this run occupies (from next_chunk_len)
+  bool is_link;
+} vttui_pager_run_t;
+
+typedef struct _vttui_pager_obj_t {
+  mp_obj_base_t base;
+  mp_obj_t segments; // Python list of (text, value) tuples, kept alive for GC
+  int segment_count;
+
+  int x, y, width, height;
+  uint32_t fg, bg;
+  uint32_t link_fg, link_bg;
+  uint32_t cur_fg, cur_bg;
+
+  vttui_pager_run_t *runs;
+  int run_count, run_cap;
+
+  int *row_starts; // size row_count+1: row_starts[r] = index into runs[] where row r begins
+  int row_count, row_cap;
+
+  int *link_segments; // segment index of each link, in document order
+  int *link_rows;      // parallel: row index of that link's first run
+  int link_count, link_cap;
+  int current_link; // index into link_segments/link_rows, or -1 = none selected yet
+
+  int scroll_row;
+  int last_scroll_row;
+  int last_current_link;
+} vttui_pager_obj_t;
+
+static void pager_get_segment(vttui_pager_obj_t *self, int i, const char **text,
+                              size_t *len, mp_obj_t *value) {
+  mp_obj_t item =
+      mp_obj_subscr(self->segments, MP_OBJ_NEW_SMALL_INT(i), MP_OBJ_SENTINEL);
+  mp_obj_t *items;
+  mp_obj_get_array_fixed_n(item, 2, &items);
+  *text = mp_obj_str_get_data(items[0], len);
+  *value = items[1];
+}
+
+static void pager_ensure_run_cap(vttui_pager_obj_t *self, int needed) {
+  if (needed <= self->run_cap)
+    return;
+  int new_cap = self->run_cap ? self->run_cap * 2 : 64;
+  while (new_cap < needed)
+    new_cap *= 2;
+  self->runs = m_renew(vttui_pager_run_t, self->runs, self->run_cap, new_cap);
+  self->run_cap = new_cap;
+}
+
+static void pager_ensure_row_cap(vttui_pager_obj_t *self, int needed) {
+  if (needed <= self->row_cap)
+    return;
+  int new_cap = self->row_cap ? self->row_cap * 2 : 64;
+  while (new_cap < needed)
+    new_cap *= 2;
+  self->row_starts = m_renew(int, self->row_starts, self->row_cap, new_cap);
+  self->row_cap = new_cap;
+}
+
+static void pager_ensure_link_cap(vttui_pager_obj_t *self, int needed) {
+  if (needed <= self->link_cap)
+    return;
+  int new_cap = self->link_cap ? self->link_cap * 2 : 16;
+  while (new_cap < needed)
+    new_cap *= 2;
+  self->link_segments =
+      m_renew(int, self->link_segments, self->link_cap, new_cap);
+  self->link_rows = m_renew(int, self->link_rows, self->link_cap, new_cap);
+  self->link_cap = new_cap;
+}
+
+// Builds self->runs/row_starts/link_segments/link_rows by walking every
+// segment's text as one continuous stream, wrapping to self->width columns
+// and breaking rows on literal '\n' bytes -- segments only affect coloring
+// (is_link) and where link-navigation can land, never where wrapping
+// happens, so a link's text reflows exactly like the plain text around it.
+static void pager_build_index(vttui_pager_obj_t *self) {
+  int text_width = self->width > 0 ? self->width : 1;
+
+  self->run_count = 0;
+  self->row_count = 0;
+  self->link_count = 0;
+  pager_ensure_row_cap(self, 1);
+  self->row_starts[0] = 0;
+
+  int seg = 0, off = 0;
+  int row_width_left = text_width;
+  bool row_has_content = false;
+  int last_link_seg = -1;
+
+  const char *text = NULL;
+  size_t seg_len_total = 0;
+  mp_obj_t value = mp_const_none;
+  bool is_link = false;
+
+  // Iteration cap purely as a last-resort circuit breaker against an
+  // unforeseen bug looping forever on real hardware (a hang here needs a
+  // physical reset, unlike almost anything else this widget could get
+  // wrong) -- not expected to ever trigger given realistic article sizes.
+  long guard = 0;
+  const long guard_max = 20000000L;
+
+  while (seg < self->segment_count) {
+    if (++guard > guard_max)
+      break;
+
+    if (text == NULL) {
+      pager_get_segment(self, seg, &text, &seg_len_total, &value);
+      is_link = (value != mp_const_none);
+    }
+    int length = (int)seg_len_total;
+
+    if (off >= length) {
+      seg++;
+      off = 0;
+      text = NULL;
+      continue;
+    }
+
+    if (row_width_left <= 0) {
+      self->row_count++;
+      pager_ensure_row_cap(self, self->row_count + 1);
+      self->row_starts[self->row_count] = self->run_count;
+      row_width_left = text_width;
+      row_has_content = false;
+      continue;
+    }
+
+    // Find the next literal '\n' within this segment at/after `off`.
+    int nl_pos = -1;
+    for (int i = off; i < length; i++) {
+      if (text[i] == '\n') {
+        nl_pos = i;
+        break;
+      }
+    }
+    int seg_limit = (nl_pos >= 0) ? nl_pos : length;
+    int avail = seg_limit - off;
+
+    if (avail > 0) {
+      int vis = 0;
+      int cl = next_chunk_len(text + off, avail, row_width_left, &vis);
+      if (cl > 0) {
+        pager_ensure_run_cap(self, self->run_count + 1);
+        vttui_pager_run_t *run = &self->runs[self->run_count++];
+        run->segment = seg;
+        run->seg_offset = off;
+        run->seg_len = cl;
+        run->vis_width = vis;
+        run->is_link = is_link;
+
+        if (is_link && seg != last_link_seg) {
+          pager_ensure_link_cap(self, self->link_count + 1);
+          self->link_segments[self->link_count] = seg;
+          self->link_rows[self->link_count] = self->row_count;
+          self->link_count++;
+          last_link_seg = seg;
+        }
+
+        row_has_content = true;
+        off += cl;
+        row_width_left -= vis;
+        continue;
+      }
+    }
+
+    if (nl_pos == off) {
+      off += 1; // consume the newline itself
+      self->row_count++;
+      pager_ensure_row_cap(self, self->row_count + 1);
+      self->row_starts[self->row_count] = self->run_count;
+      row_width_left = text_width;
+      row_has_content = false;
+      continue;
+    }
+
+    // Nothing consumable left in this segment (avail == 0, no newline
+    // right here) -- move on to the next segment, same row continues.
+    seg++;
+    off = 0;
+    text = NULL;
+  }
+
+  if (row_has_content || self->row_count == 0) {
+    self->row_count++;
+    pager_ensure_row_cap(self, self->row_count + 1);
+    self->row_starts[self->row_count] = self->run_count;
+  }
+
+  self->scroll_row = 0;
+  self->last_scroll_row = -1;
+  self->current_link = -1;
+  self->last_current_link = -1;
+}
+
+static void render_pager_row(vttui_pager_obj_t *self, int row_idx, int y) {
+  int run_start = self->row_starts[row_idx];
+  int run_end = self->row_starts[row_idx + 1];
+
+  vttui_begin(self->x, y, self->fg, self->bg, false);
+  int col = 0;
+  for (int ri = run_start; ri < run_end; ri++) {
+    vttui_pager_run_t *run = &self->runs[ri];
+    const char *text;
+    size_t seglen;
+    mp_obj_t value;
+    pager_get_segment(self, run->segment, &text, &seglen, &value);
+
+    bool is_current = self->current_link >= 0 &&
+                      run->segment == self->link_segments[self->current_link];
+    uint32_t rfg = run->is_link ? (is_current ? self->cur_fg : self->link_fg)
+                                : self->fg;
+    uint32_t rbg = run->is_link ? (is_current ? self->cur_bg : self->link_bg)
+                                : self->bg;
+
+    vttui_sgr(rfg, rbg, false);
+    write_block_text(text + run->seg_offset, run->seg_len, rfg, rbg);
+    col += run->vis_width;
+  }
+
+  int remaining = self->width - col;
+  if (remaining > 0) {
+    vttui_sgr(self->fg, self->bg, false);
+    write_spaces(remaining);
+  }
+  vttui_write_str("\033[0m");
+}
+
+static mp_obj_t vttui_pager_draw(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  bool first_draw = (self->last_scroll_row == -1);
+  bool changed = first_draw || self->scroll_row != self->last_scroll_row ||
+                self->current_link != self->last_current_link;
+  if (!changed)
+    return mp_const_none;
+
+  for (int i = 0; i < self->height; i++) {
+    int row_idx = self->scroll_row + i;
+    int y = self->y + i;
+    if (row_idx < self->row_count) {
+      render_pager_row(self, row_idx, y);
+    } else {
+      vttui_begin(self->x, y, self->fg, self->bg, false);
+      write_spaces(self->width);
+      vttui_write_str("\033[0m");
+    }
+  }
+
+  self->last_scroll_row = self->scroll_row;
+  self->last_current_link = self->current_link;
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_draw_obj, vttui_pager_draw);
+
+static mp_obj_t vttui_pager_up(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  if (self->scroll_row > 0)
+    self->scroll_row--;
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_up_obj, vttui_pager_up);
+
+static mp_obj_t vttui_pager_down(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  int max_scroll =
+      self->row_count > self->height ? self->row_count - self->height : 0;
+  if (self->scroll_row < max_scroll)
+    self->scroll_row++;
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_down_obj, vttui_pager_down);
+
+// Scrolls just enough (never more) to bring row_idx into the visible
+// window -- same clamping shape as list_set_selected()'s multirow branch.
+static void pager_scroll_to_row(vttui_pager_obj_t *self, int row_idx) {
+  int max_scroll =
+      self->row_count > self->height ? self->row_count - self->height : 0;
+  if (row_idx < self->scroll_row) {
+    self->scroll_row = row_idx;
+  } else if (row_idx >= self->scroll_row + self->height) {
+    self->scroll_row = row_idx - self->height + 1;
+  }
+  if (self->scroll_row < 0)
+    self->scroll_row = 0;
+  if (self->scroll_row > max_scroll)
+    self->scroll_row = max_scroll;
+}
+
+static mp_obj_t vttui_pager_next_link(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  if (self->link_count == 0)
+    return mp_const_none;
+  self->current_link = (self->current_link < 0)
+                           ? 0
+                           : (self->current_link + 1) % self->link_count;
+  pager_scroll_to_row(self, self->link_rows[self->current_link]);
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_next_link_obj,
+                                 vttui_pager_next_link);
+
+static mp_obj_t vttui_pager_prev_link(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  if (self->link_count == 0)
+    return mp_const_none;
+  self->current_link = (self->current_link < 0)
+                           ? self->link_count - 1
+                           : (self->current_link - 1 + self->link_count) %
+                                 self->link_count;
+  pager_scroll_to_row(self, self->link_rows[self->current_link]);
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_prev_link_obj,
+                                 vttui_pager_prev_link);
+
+static const mp_rom_map_elem_t vttui_pager_locals_dict_table[] = {
+    {MP_ROM_QSTR(MP_QSTR_draw), MP_ROM_PTR(&vttui_pager_draw_obj)},
+    {MP_ROM_QSTR(MP_QSTR_up), MP_ROM_PTR(&vttui_pager_up_obj)},
+    {MP_ROM_QSTR(MP_QSTR_down), MP_ROM_PTR(&vttui_pager_down_obj)},
+    {MP_ROM_QSTR(MP_QSTR_next_link), MP_ROM_PTR(&vttui_pager_next_link_obj)},
+    {MP_ROM_QSTR(MP_QSTR_prev_link), MP_ROM_PTR(&vttui_pager_prev_link_obj)},
+};
+static MP_DEFINE_CONST_DICT(vttui_pager_locals_dict,
+                            vttui_pager_locals_dict_table);
+
+static void vttui_pager_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+  if (dest[0] != MP_OBJ_NULL)
+    return; // no settable attributes
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  if (attr == MP_QSTR_current_link) {
+    if (self->current_link < 0) {
+      dest[0] = mp_const_none;
+    } else {
+      const char *text;
+      size_t len;
+      mp_obj_t value;
+      pager_get_segment(self, self->link_segments[self->current_link], &text,
+                        &len, &value);
+      dest[0] = value;
+    }
+    return;
+  }
+  mp_map_elem_t *elem =
+      mp_map_lookup((mp_map_t *)&vttui_pager_locals_dict.map,
+                    MP_OBJ_NEW_QSTR(attr), MP_MAP_LOOKUP);
+  if (elem) {
+    dest[0] = elem->value;
+    dest[1] = self_in;
+  }
+}
+
+MP_DEFINE_CONST_OBJ_TYPE(vttui_pager_type, MP_QSTR_VTPager, MP_TYPE_FLAG_NONE,
+                         attr, vttui_pager_attr, locals_dict,
+                         &vttui_pager_locals_dict);
+
+static const mp_arg_t make_pager_args[] = {
+    {MP_QSTR_segments, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+    {MP_QSTR_x, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0}},
+    {MP_QSTR_y, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0}},
+    {MP_QSTR_width, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0}},
+    {MP_QSTR_height, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0}},
+    {MP_QSTR_fg, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0}},
+    {MP_QSTR_bg, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0}},
+    {MP_QSTR_link_fg, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1}},
+    {MP_QSTR_link_bg, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1}},
+    {MP_QSTR_cur_fg, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1}},
+    {MP_QSTR_cur_bg, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = -1}},
+};
+
+static vttui_pager_obj_t *create_pager(mp_arg_val_t *args, int abs_x, int abs_y,
+                                       int width, int height) {
+  vttui_pager_obj_t *pager = m_new_obj(vttui_pager_obj_t);
+  pager->base.type = &vttui_pager_type;
+  pager->segments = args[0].u_obj;
+  pager->segment_count = mp_obj_get_int(mp_obj_len(pager->segments));
+  pager->x = abs_x;
+  pager->y = abs_y;
+  pager->width = width;
+  pager->height = height;
+  pager->fg = (uint32_t)args[5].u_int;
+  pager->bg = (uint32_t)args[6].u_int;
+  pager->link_fg = args[7].u_int >= 0 ? (uint32_t)args[7].u_int : pager->fg;
+  pager->link_bg = args[8].u_int >= 0 ? (uint32_t)args[8].u_int : pager->bg;
+  pager->cur_fg = args[9].u_int >= 0 ? (uint32_t)args[9].u_int : pager->bg;
+  pager->cur_bg = args[10].u_int >= 0 ? (uint32_t)args[10].u_int : pager->fg;
+
+  pager->runs = NULL;
+  pager->run_count = 0;
+  pager->run_cap = 0;
+  pager->row_starts = NULL;
+  pager->row_count = 0;
+  pager->row_cap = 0;
+  pager->link_segments = NULL;
+  pager->link_rows = NULL;
+  pager->link_count = 0;
+  pager->link_cap = 0;
+
+  pager_build_index(pager);
+
+  return pager;
+}
+
+static mp_obj_t vttui_make_pager(size_t n_args, const mp_obj_t *pos_args,
+                                 mp_map_t *kw_args) {
+  mp_arg_val_t args[MP_ARRAY_SIZE(make_pager_args)];
+  mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args,
+                   MP_ARRAY_SIZE(make_pager_args), make_pager_args, args);
+  return MP_OBJ_FROM_PTR(create_pager(args, args[1].u_int, args[2].u_int,
+                                      args[3].u_int, args[4].u_int));
+}
+static MP_DEFINE_CONST_FUN_OBJ_KW(vttui_make_pager_obj, 1, vttui_make_pager);
+
 // ─── VTDialog
 // ─────────────────────────────────────────────────────────────────
 
@@ -2097,6 +2529,7 @@ static const mp_rom_map_elem_t vttui_locals_dict_table[] = {
     {MP_ROM_QSTR(MP_QSTR_make_list), MP_ROM_PTR(&vttui_make_list_obj)},
     {MP_ROM_QSTR(MP_QSTR_make_input), MP_ROM_PTR(&vttui_make_input_obj)},
     {MP_ROM_QSTR(MP_QSTR_make_block), MP_ROM_PTR(&vttui_make_block_obj)},
+    {MP_ROM_QSTR(MP_QSTR_make_pager), MP_ROM_PTR(&vttui_make_pager_obj)},
     {MP_ROM_QSTR(MP_QSTR_make_dialog), MP_ROM_PTR(&vttui_make_dialog_obj)},
     {MP_ROM_QSTR(MP_QSTR_make_window), MP_ROM_PTR(&vttui_make_window_obj)},
 };

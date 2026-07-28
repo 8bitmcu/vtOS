@@ -18,11 +18,14 @@ MAX_HEADER_LEN = 1024
 FG = 252
 BG = 18
 
+# A plain color index, not an escape string -- make_pager() owns link
+# coloring itself now rather than taking pre-colored text.
+LINK_COLOR = 45
+
 CLR      = "\x1b[0m"
 H1_FG    = "\x1b[1;38;5;255m"
 H2_FG    = "\x1b[1;38;5;250m"
 H3_FG    = "\x1b[38;5;250m"
-LINK_FG  = "\x1b[38;5;45m"
 QUOTE_FG = "\x1b[38;5;244m"
 PRE_FG   = "\x1b[38;5;244m"
 ERR_FG   = "\x1b[38;5;210m"
@@ -268,34 +271,42 @@ def _quote(s):
 
 
 def _render_lines(parsed):
-    """Turn parse_gemtext() output into (display_string, link_url) pairs."""
+    """Turn parse_gemtext() output into (text, link_url) segments for
+    tui.make_pager(). Every gemtext line is still exactly one row -- a
+    trailing '\\n' on each entry forces the pager to break there instead
+    of reflowing consecutive short lines onto the same row (gemtext,
+    like gopher, is inherently line-oriented -- a link is always a
+    whole "=>" line, never inline mid-paragraph). Link coloring is the
+    pager's job now; heading/quote/preformatted coloring is still
+    embedded directly since those aren't navigable.
+    """
     out = []
     for kind, text, url in parsed:
         if kind == "h1":
-            out.append((H1_FG + text + CLR, None))
+            out.append((H1_FG + text + CLR + "\n", None))
         elif kind == "h2":
-            out.append((H2_FG + text + CLR, None))
+            out.append((H2_FG + text + CLR + "\n", None))
         elif kind == "h3":
-            out.append((H3_FG + text + CLR, None))
+            out.append((H3_FG + text + CLR + "\n", None))
         elif kind == "link":
-            out.append((LINK_FG + "-> " + text + CLR, url))
+            out.append(("-> " + text + "\n", url))
         elif kind == "list":
-            out.append(("  * " + text, None))
+            out.append(("  * " + text + "\n", None))
         elif kind == "quote":
-            out.append((QUOTE_FG + "| " + text + CLR, None))
+            out.append((QUOTE_FG + "| " + text + CLR + "\n", None))
         elif kind == "pre":
-            out.append((PRE_FG + text + CLR, None))
+            out.append((PRE_FG + text + CLR + "\n", None))
         else:
-            out.append((text, None))
+            out.append((text + "\n", None))
     return out
 
 
 def _load(url):
     """Fetch url and return (status_kind, payload).
 
-    status_kind is one of "page", "input", "error". payload is
-    (display_lines, links) for "page", the input prompt for "input", or
-    an error message for "error".
+    status_kind is one of "page", "input", "error". payload is a list
+    of (text, link_url) segments (see _render_lines) for "page", the
+    input prompt for "input", or an error message for "error".
     """
     try:
         resp = get(url)
@@ -315,10 +326,7 @@ def _load(url):
             else:
                 return "error", "Unsupported content type: " + mimetype
 
-            rendered = _render_lines(parsed)
-            links = {i: u for i, (_, u) in enumerate(rendered) if u}
-            display = [s for s, _ in rendered]
-            return "page", (display, links)
+            return "page", _render_lines(parsed)
         return "error", "%d %s" % (resp.status, resp.meta)
     finally:
         resp.close()
@@ -339,7 +347,7 @@ def main(env, args):
     tui.cursor_hide()
 
     history = []
-    display, links = [], {}
+    segments = []
     prompt = ""
     error = ""
     ui_state = "LOAD"
@@ -362,7 +370,7 @@ def main(env, args):
             gc.collect()
 
             if kind == "page":
-                display, links = payload
+                segments = payload
                 ui_state = "PAGE"
             elif kind == "input":
                 prompt = payload
@@ -373,35 +381,39 @@ def main(env, args):
 
         elif ui_state == "PAGE":
             tui.clear_screen()
-            status = tui.make_label("[w/s] nav | [b]ack | [q]uit",
+            status = tui.make_label("[w/s] nav | [n/N] links | [enter] open | [b]ack | [q]uit",
                                     0, env.rows-1,
                                     fg=0, bg=252,
                                     width=env.cols)
 
-            lst = tui.make_list(display if display else ["(empty page)"],
-                                x=0, y=0,
-                                width=env.cols, height=env.rows-1,
-                                fg=FG, bg=BG,
-                                arrow=">", left_pad=1,
-                                multiline=True, wrap=True)
+            pager = tui.make_pager(segments if segments else [("(empty page)", None)],
+                                   0, 0,
+                                   width=env.cols, height=env.rows-1,
+                                   fg=FG, bg=BG,
+                                   link_fg=LINK_COLOR, link_bg=BG,
+                                   cur_fg=BG, cur_bg=LINK_COLOR)
 
             while True:
-                lst.draw()
+                pager.draw()
                 status.draw()
                 tui.draw()
 
                 char = sys.stdin.read(1)
                 if char == "\n" or char == "\r":
-                    target = links.get(lst.index)
-                    if target:
+                    target = pager.current_link
+                    if target is not None:
                         history.append(url)
                         url = resolve(url, target)
                         ui_state = "LOAD"
                         break
                 elif char == "w":
-                    lst.up()
+                    pager.up()
                 elif char == "s":
-                    lst.down()
+                    pager.down()
+                elif char == "n":
+                    pager.next_link()
+                elif char == "N":
+                    pager.prev_link()
                 elif char == "b":
                     if history:
                         url = history.pop()

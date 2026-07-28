@@ -16,8 +16,9 @@ DEFAULT_IDX_PATH = "/sd/wiki/simplewiki.idx"
 FG = 252
 BG = 18
 
+LINK_COLOR = 45
+
 CLR      = "\x1b[0m"
-LINK_FG  = "\x1b[38;5;45m"
 ERR_FG   = "\x1b[38;5;210m"
 
 _MAGIC = b"VWIK"
@@ -208,14 +209,18 @@ class WikiIndex:
 
 def _render_article(body_bytes):
     """ Splits an article body on its inline link markers into
-    (display_text, target_record_id) rows -- link rows carry a record
-    id, plain rows carry None. Mirrors gopher.py's rendered-lines /
-    links-dict pattern, just built from local link markers instead of
-    a parsed gophermap. """
+    (text, target_record_id) segments -- link segments carry a record
+    id, plain segments carry None. Fed straight into tui.make_pager(),
+    which reflows every segment together into wrapped rows and owns
+    link coloring itself, so no color codes or per-line splitting
+    happens here -- embedded '\\n's (from headings) are handled by the
+    pager's own row-breaking, not pre-split into separate entries. """
     text = body_bytes.decode("utf-8", "ignore")
-    segments = text.split(_LINK_RS)
-    rows = []
-    for i, seg in enumerate(segments):
+    parts = text.split(_LINK_RS)
+    segments = []
+    for i, seg in enumerate(parts):
+        if not seg:
+            continue
         if i % 2 == 1:
             id_str, _, display = seg.partition(_LINK_US)
             try:
@@ -223,13 +228,11 @@ def _render_article(body_bytes):
             except ValueError:
                 target_id = None
             if target_id is not None:
-                rows.append((LINK_FG + display + CLR, target_id))
+                segments.append((display, target_id))
                 continue
             seg = display  # malformed marker -- fall through, render as plain text
-
-        for line in seg.split("\n"):
-            rows.append((line, None))
-    return rows
+        segments.append((seg, None))
+    return segments
 
 
 def main(env, args):
@@ -260,7 +263,7 @@ def main(env, args):
 
     ui_state = "INPUT" if wiki else "ERROR"
     history = []
-    display, links = [], []
+    segments = []
     suggestions = []
     title = ""
 
@@ -285,7 +288,7 @@ def main(env, args):
                                  align="center")
 
             status = tui.make_label("[esc] %s | [enter] search" %
-                                    ("quit" if not display and not suggestions else "cancel"),
+                                    ("quit" if not segments and not suggestions else "cancel"),
                                     0, env.rows-1,
                                     fg=0, bg=252,
                                     width=env.cols)
@@ -307,7 +310,7 @@ def main(env, args):
                     query_input.backspace()
                 elif char == "\x1b":
                     tui.cursor_hide()
-                    ui_state = "PAGE" if display else "SUGGEST" if suggestions else "QUIT"
+                    ui_state = "PAGE" if segments else "SUGGEST" if suggestions else "QUIT"
                     break
                 else:
                     query_input.push(char)
@@ -331,15 +334,12 @@ def main(env, args):
                 record_id = wiki.find_exact(norm)
                 if record_id is not None:
                     title, body = wiki.load_article(record_id)
-                    rows = _render_article(body)
-                    display = [r[0] for r in rows]
-                    links = {i: t for i, (_, t) in enumerate(rows) if t is not None}
+                    segments = _render_article(body)
                     suggestions = []
                     ui_state = "PAGE"
                 else:
                     matches = wiki.find_prefix(norm)
-                    display = []
-                    links = {}
+                    segments = []
                     if matches:
                         suggestions = matches
                         ui_state = "SUGGEST"
@@ -353,54 +353,57 @@ def main(env, args):
 
         elif ui_state == "PAGE":
             tui.clear_screen()
-            status = tui.make_label("[w/s] nav | [b]ack | [n]ew search | [q]uit",
+            # "n"/"N" are taken by link navigation here (unlike dict.py's
+            # PAGE state), so "new search" moves to "/" -- same key `less`
+            # itself uses to start a search, which fits the pager framing.
+            status = tui.make_label("[w/s] nav | [n/N] links | [x] search",
                                     0, env.rows-1,
                                     fg=0, bg=252,
                                     width=env.cols)
 
-            lst = tui.make_list(display if display else ["(empty article)"],
-                                x=0, y=0,
-                                width=env.cols, height=env.rows-1,
-                                fg=FG, bg=BG,
-                                arrow=">", left_pad=1,
-                                multiline=True, wrap=True)
+            pager = tui.make_pager(segments if segments else [("(empty article)", None)],
+                                   0, 0,
+                                   width=env.cols, height=env.rows-1,
+                                   fg=FG, bg=BG,
+                                   link_fg=LINK_COLOR, link_bg=BG,
+                                   cur_fg=BG, cur_bg=LINK_COLOR)
 
             while True:
-                lst.draw()
+                pager.draw()
                 status.draw()
                 tui.draw()
 
                 char = sys.stdin.read(1)
                 if char == "\n" or char == "\r":
-                    target = links.get(lst.index)
+                    target = pager.current_link
                     if target is not None:
                         history.append(title)
                         try:
                             title, body = wiki.load_article(target)
-                            rows = _render_article(body)
-                            display = [r[0] for r in rows]
-                            links = {i: t for i, (_, t) in enumerate(rows) if t is not None}
+                            segments = _render_article(body)
                             gc.collect()
                         except (OSError, WikiFormatError) as e:
                             error = _format_exception(e)
                             ui_state = "ERROR"
                         break
                 elif char == "w":
-                    lst.up()
+                    pager.up()
                 elif char == "s":
-                    lst.down()
+                    pager.down()
+                elif char == "n":
+                    pager.next_link()
+                elif char == "N":
+                    pager.prev_link()
                 elif char == "b":
                     if history:
                         target_title = history.pop()
                         record_id = wiki.find_exact(normalize_title(target_title))
                         if record_id is not None:
                             title, body = wiki.load_article(record_id)
-                            rows = _render_article(body)
-                            display = [r[0] for r in rows]
-                            links = {i: t for i, (_, t) in enumerate(rows) if t is not None}
+                            segments = _render_article(body)
                             gc.collect()
                         break
-                elif char == "n":
+                elif char == "x":
                     ui_state = "INPUT"
                     break
                 elif char == "q":
@@ -433,9 +436,7 @@ def main(env, args):
                     record_id, _ = suggestions[lst.index]
                     try:
                         title, body = wiki.load_article(record_id)
-                        rows = _render_article(body)
-                        display = [r[0] for r in rows]
-                        links = {i: t for i, (_, t) in enumerate(rows) if t is not None}
+                        segments = _render_article(body)
                         suggestions = []
                         ui_state = "PAGE"
                     except (OSError, WikiFormatError) as e:

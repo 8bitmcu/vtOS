@@ -1,3 +1,6 @@
 /build_output/
 /fonts/
 /.vendor-ref/
+/utils/.venv/
+/utils/wiki-data/
+__pycache__/

@@ -12,10 +12,20 @@
 # environment: `uv venv utils/.venv && uv pip install --python
 # utils/.venv/bin/python mwparserfromhell pytest requests`).
 
+import argparse
+import bz2
+import json
+import os
 import re
 import struct
+import time
+import xml.etree.ElementTree as ET
+import zlib
 
 import mwparserfromhell
+import requests
+
+DEFAULT_DUMP_URL = "https://dumps.wikimedia.org/simplewiki/latest/simplewiki-latest-pages-articles.xml.bz2"
 
 MAGIC = b"VWIK"
 FORMAT_VERSION = 1
@@ -388,3 +398,331 @@ def clean_wikitext(wikitext, title_to_record_id, redirect_map, max_redirect_dept
     text = text.strip(" \t\r\n")
 
     return text.encode("utf-8"), link_ids
+
+
+# ---------------------------------------------------------------------------
+# Dump download (I/O glue -- not unit tested)
+# ---------------------------------------------------------------------------
+
+def download_dump(url, dest_path, force=False):
+    """ Downloads url to dest_path, streaming to avoid holding the
+    whole (multi-hundred-MB) dump in memory. Skips the download if
+    dest_path already exists and looks complete, unless force=True --
+    re-running the conversion while iterating on parsing logic
+    shouldn't have to re-fetch the dump every time. """
+    if os.path.exists(dest_path) and not force:
+        print(f"wikiconvert: using cached dump at {dest_path} (pass --force-download to refetch)")
+        return dest_path
+
+    tmp_path = dest_path + ".part"
+    print(f"wikiconvert: downloading {url}")
+    with requests.get(url, stream=True, timeout=60) as resp:
+        resp.raise_for_status()
+        total = int(resp.headers.get("content-length", 0))
+        written = 0
+        last_report = time.monotonic()
+        with open(tmp_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                f.write(chunk)
+                written += len(chunk)
+                now = time.monotonic()
+                if now - last_report > 2:
+                    pct = f" ({100 * written / total:.1f}%)" if total else ""
+                    print(f"wikiconvert: downloaded {written / 1e6:.0f}MB{pct}", end="\r")
+                    last_report = now
+    print()
+    os.replace(tmp_path, dest_path)
+    return dest_path
+
+
+# ---------------------------------------------------------------------------
+# MediaWiki XML dump streaming parse
+# ---------------------------------------------------------------------------
+
+def _localname(tag):
+    """ ElementTree qualifies tags with the MediaWiki export XML
+    namespace URI, e.g. "{http://www.mediawiki.org/xml/export-0.10/}page"
+    -- strip that prefix so callers can match on plain tag names
+    without hardcoding a specific export schema version. """
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+class DumpPage:
+    __slots__ = ("title", "ns", "redirect_title", "text")
+
+    def __init__(self, title, ns, redirect_title, text):
+        self.title = title
+        self.ns = ns
+        self.redirect_title = redirect_title
+        self.text = text
+
+
+def iterate_dump_pages(dump_path):
+    """ Streams <page> elements out of a bz2-compressed MediaWiki
+    export XML dump, one DumpPage at a time, clearing each element
+    after it's read so the parse doesn't hold the full (multi-GB
+    decompressed) document in memory. """
+    with bz2.BZ2File(dump_path, "rb") as f:
+        for event, elem in ET.iterparse(f, events=("end",)):
+            if _localname(elem.tag) != "page":
+                continue
+
+            title = ""
+            ns = ""
+            redirect_title = None
+            text = ""
+
+            for child in elem:
+                ctag = _localname(child.tag)
+                if ctag == "title":
+                    title = child.text or ""
+                elif ctag == "ns":
+                    ns = child.text or ""
+                elif ctag == "redirect":
+                    redirect_title = child.get("title")
+                elif ctag == "revision":
+                    for rchild in child:
+                        if _localname(rchild.tag) == "text":
+                            text = rchild.text or ""
+
+            yield DumpPage(title, ns, redirect_title, text)
+            elem.clear()
+
+
+# ---------------------------------------------------------------------------
+# Two-pass conversion driver
+# ---------------------------------------------------------------------------
+
+def _is_kept_article(page, min_article_chars):
+    """ Shared keep/drop decision used identically by both passes --
+    pass 1 (to decide the sorted title set) and pass 2 (to decide
+    which pages to actually clean+emit) must agree, or record ids
+    assigned in pass 1 won't line up with the articles pass 2 emits. """
+    if not is_article_namespace(page.ns):
+        return False
+    if page.redirect_title is not None:
+        return False
+    if parse_redirect_target(page.text) is not None:
+        return False
+    if is_disambiguation(page.text):
+        return False
+    if len(page.text.strip()) < min_article_chars:
+        return False
+    return True
+
+
+def _collect_titles_and_redirects(dump_path, min_article_chars):
+    """ Pass 1: decides the final kept-article set and assigns each a
+    stable record id (= its position in normalized-title sort order),
+    and separately collects every redirect's (source -> target)
+    mapping regardless of whether the target ends up kept (a dangling
+    redirect just means links through it stay dead links). """
+    kept_titles = set()
+    redirect_map = {}
+
+    for page in iterate_dump_pages(dump_path):
+        norm_title = normalize_title(page.title)
+
+        if page.redirect_title is not None:
+            redirect_map[norm_title] = normalize_title(page.redirect_title)
+            continue
+
+        target = parse_redirect_target(page.text)
+        if target is not None:
+            redirect_map[norm_title] = target
+            continue
+
+        if _is_kept_article(page, min_article_chars):
+            kept_titles.add(norm_title)
+
+    sorted_titles = sorted(kept_titles)
+    title_to_record_id = {title: i for i, title in enumerate(sorted_titles)}
+    return sorted_titles, title_to_record_id, redirect_map
+
+
+def convert(dump_path, output_dir, chunk_size=65536, max_title_bytes=96,
+            min_article_chars=200, max_size_mb=1000, limit=None):
+    """ Runs the full two-pass conversion and writes simplewiki.{idx,dat,meta.json}
+    into output_dir. Returns the dict written to meta.json. """
+    os.makedirs(output_dir, exist_ok=True)
+
+    print("wikiconvert: pass 1/2 -- collecting titles and redirects...")
+    sorted_titles, title_to_record_id, redirect_map = _collect_titles_and_redirects(
+        dump_path, min_article_chars
+    )
+    if limit is not None:
+        sorted_titles = sorted_titles[:limit]
+        title_to_record_id = {t: i for i, t in enumerate(sorted_titles)}
+    print(f"wikiconvert: keeping {len(sorted_titles)} articles, {len(redirect_map)} redirects")
+
+    for title in sorted_titles:
+        if len(title.encode("utf-8")) > max_title_bytes:
+            raise ValueError(
+                f"title {title!r} exceeds --max-title-bytes={max_title_bytes}; "
+                "rerun with a larger value"
+            )
+
+    # (chunk_id, article_offset, article_len) per record id, backfilled below.
+    placements_by_record = [None] * len(sorted_titles)
+
+    def _packed_records():
+        print("wikiconvert: pass 2/2 -- cleaning and compressing articles...")
+        emitted = 0
+        for page in iterate_dump_pages(dump_path):
+            norm_title = normalize_title(page.title)
+            record_id = title_to_record_id.get(norm_title)
+            if record_id is None:
+                continue  # not in the kept set (redirect/disambig/stub/dropped by --limit)
+            if page.redirect_title is not None or parse_redirect_target(page.text) is not None:
+                continue
+
+            body, link_ids = clean_wikitext(page.text, title_to_record_id, redirect_map)
+            yield record_id, pack_article_record(link_ids, body)
+
+            emitted += 1
+            if emitted % 5000 == 0:
+                print(f"wikiconvert: ...{emitted}/{len(sorted_titles)} articles")
+
+    dat_path = os.path.join(output_dir, "simplewiki.dat")
+    chunk_table = []
+    with open(dat_path, "wb") as dat_f:
+        for chunk_id, (chunk_bytes, placements) in enumerate(_packed_records_chunked(
+            _packed_records(), chunk_size
+        )):
+            compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
+            compressed = compressor.compress(chunk_bytes) + compressor.flush()
+
+            data_offset = dat_f.tell()
+            dat_f.write(compressed)
+            chunk_table.append((data_offset, len(compressed), len(chunk_bytes)))
+
+            for record_id, offset, length in placements:
+                placements_by_record[record_id] = (chunk_id, offset, length)
+
+    missing = [i for i, p in enumerate(placements_by_record) if p is None]
+    if missing:
+        raise RuntimeError(
+            f"{len(missing)} kept titles were never emitted in pass 2 -- "
+            "pass 1/pass 2 keep-decisions disagree, this is a bug"
+        )
+
+    title_record_size = max_title_bytes + 12
+    header_size = 32
+    chunk_table_offset = header_size
+    title_index_offset = chunk_table_offset + len(chunk_table) * 12
+
+    idx_path = os.path.join(output_dir, "simplewiki.idx")
+    with open(idx_path, "wb") as idx_f:
+        idx_f.write(build_index_header(
+            article_count=len(sorted_titles),
+            chunk_count=len(chunk_table),
+            title_record_size=title_record_size,
+            max_title_bytes=max_title_bytes,
+            chunk_table_offset=chunk_table_offset,
+            title_index_offset=title_index_offset,
+        ))
+        for entry in chunk_table:
+            idx_f.write(pack_chunk_entry(*entry))
+        for title in sorted_titles:
+            record_id = title_to_record_id[title]
+            chunk_id, offset, length = placements_by_record[record_id]
+            idx_f.write(pack_title_record(title, chunk_id, offset, length, max_title_bytes))
+
+    total_bytes = os.path.getsize(idx_path) + os.path.getsize(dat_path)
+    max_bytes = max_size_mb * 1024 * 1024
+    if total_bytes > max_bytes:
+        raise RuntimeError(
+            f"output is {total_bytes / 1e6:.0f}MB, over --max-size-mb={max_size_mb}. "
+            "Simple English Wikipedia is expected to comfortably fit this budget -- "
+            "if you're seeing this, something upstream likely changed (dump format, "
+            "filters letting too much through); this is a hard fail rather than a "
+            "silent truncation because truncating would drop articles arbitrarily."
+        )
+
+    meta = {
+        "source_url": None,  # filled in by main() when known
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "article_count": len(sorted_titles),
+        "chunk_count": len(chunk_table),
+        "chunk_size": chunk_size,
+        "max_title_bytes": max_title_bytes,
+        "format_version": FORMAT_VERSION,
+        "total_bytes": total_bytes,
+    }
+    with open(os.path.join(output_dir, "simplewiki.meta.json"), "w") as meta_f:
+        json.dump(meta, meta_f, indent=2)
+
+    print(f"wikiconvert: wrote {len(sorted_titles)} articles, "
+          f"{total_bytes / 1e6:.1f}MB total, to {output_dir}")
+    return meta
+
+
+def _packed_records_chunked(records, chunk_size):
+    """ Thin adapter: chunk_articles() is generic over any (key, bytes)
+    iterable, this just names the specific use for readability at the
+    call site above. """
+    return chunk_articles(records, chunk_size)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Convert a Simple English Wikipedia XML dump into vtOS's "
+                     "offline wiki reader format (/sd/wiki/simplewiki.{idx,dat}).",
+    )
+    parser.add_argument("--url", default=DEFAULT_DUMP_URL,
+                         help="Dump URL to download (default: latest simplewiki dump).")
+    parser.add_argument("--input", default=None,
+                         help="Use a local .xml.bz2 dump instead of downloading.")
+    parser.add_argument("--output-dir", default="wiki-data",
+                         help="Directory to write simplewiki.{idx,dat,meta.json} into.")
+    parser.add_argument("--max-size-mb", type=int, default=1000,
+                         help="Hard-fail if output exceeds this size (default: 1000).")
+    parser.add_argument("--chunk-size", type=int, default=65536,
+                         help="Target decompressed bytes per compressed chunk (default: 65536).")
+    parser.add_argument("--max-title-bytes", type=int, default=96,
+                         help="Fixed-width title field size in bytes (default: 96).")
+    parser.add_argument("--min-article-chars", type=int, default=200,
+                         help="Drop pages whose raw wikitext is shorter than this (default: 200).")
+    parser.add_argument("--limit", type=int, default=None,
+                         help="Only keep the first N articles (sorted by title) -- for quick test runs.")
+    parser.add_argument("--force-download", action="store_true",
+                         help="Redownload the dump even if a cached copy exists.")
+    args = parser.parse_args(argv)
+
+    if args.input:
+        dump_path = args.input
+    else:
+        os.makedirs(args.output_dir, exist_ok=True)
+        cache_name = args.url.rsplit("/", 1)[-1]
+        dump_path = download_dump(
+            args.url, os.path.join(args.output_dir, cache_name), force=args.force_download
+        )
+
+    meta_extra_url = args.url if not args.input else None
+
+    convert(
+        dump_path, args.output_dir,
+        chunk_size=args.chunk_size,
+        max_title_bytes=args.max_title_bytes,
+        min_article_chars=args.min_article_chars,
+        max_size_mb=args.max_size_mb,
+        limit=args.limit,
+    )
+
+    if meta_extra_url:
+        meta_path = os.path.join(args.output_dir, "simplewiki.meta.json")
+        with open(meta_path) as f:
+            meta = json.load(f)
+        meta["source_url"] = meta_extra_url
+        with open(meta_path, "w") as f:
+            json.dump(meta, f, indent=2)
+
+
+if __name__ == "__main__":
+    main()

@@ -95,6 +95,7 @@ You can execute the following commands from the built-in shell:
 | `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
 | `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |
+| `mail` | POP3 email client; connect with `mail <host> <user> <password> [port]` (defaults to port 995/TLS) |
 | `menu` | An interactive shortcut menu for commands. |
 | `mines` | Opens the minesweeper clone |
 | `nm` | TUI Network Manager. Can also be used as a command line tool |

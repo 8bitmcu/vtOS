@@ -79,6 +79,7 @@ class Shell:
         self.register("nm",          _app("bin.netmgr",     tui=True))
         self.register("fm",          _app("bin.filemgr",    tui=True))
         self.register("irc",         _app("bin.irc",        tui=True))
+        self.register("mail",        _app("bin.mail",       tui=True))
         self.register("rss",         _app("bin.rss",        tui=True))
         self.register("gemini",      _app("bin.gemini",     tui=True))
         self.register("gopher",      _app("bin.gopher",     tui=True))

@@ -84,6 +84,7 @@ You can execute the following commands from the built-in shell:
 | `chess` | Basic chess game using unicode characters |
 | `clear` | Clears the screen |
 | `c2` | Codec 2 audio/voice codec encode/decode utility |
+| `dict` | DICT protocol dictionary lookup client |
 | `echo` | Prints its arguments back out |
 | `fav` | Built-in shell aliases |
 | `fc` | Font Configuration Utility. Try `menu fc` |
@@ -100,7 +101,7 @@ You can execute the following commands from the built-in shell:
 | `nm` | TUI Network Manager. Can also be used as a command line tool |
 | `ping` | Used to test the reachability of a given host |
 | `play` | Audio player that supports WAV, MP3 and C2 (Codec 2) encoded files. |
-| `pop3` | POP3 email client; connect with `pop3 <host> <user> <password> [port]` and read messages in `vi` |
+| `pop3` | POP3 email client; connect with `pop3 <host> <user> <password> [port]` |
 | `rec` | Audio recorder that records to WAV or C2 (Codec 2). Note: Noise issues currently unresolved |
 | `rss` | RSS Reader; connect to a RSS url to retreive the articles, or use `menu rss` for saved feeds |
 | `sftp` | SFTP Client that mounts its content as a VFS |

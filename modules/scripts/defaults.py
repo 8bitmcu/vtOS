@@ -131,6 +131,7 @@ def apply():
         with open("menu/.menu.json", "x") as f:
             json.dump({
                 "Chess": "chess",
+                "Dictionary": "dict",
                 "File Manager": "fm",
                 "Font Config": "menu fc",
                 "Gemini": "menu gemini",

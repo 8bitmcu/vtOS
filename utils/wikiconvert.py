@@ -15,6 +15,8 @@
 import re
 import struct
 
+import mwparserfromhell
+
 MAGIC = b"VWIK"
 FORMAT_VERSION = 1
 
@@ -222,3 +224,167 @@ def chunk_articles(records, chunk_size):
 
     if placements:
         yield bytes(buffer), placements
+
+
+# ---------------------------------------------------------------------------
+# Wikitext cleaning
+# ---------------------------------------------------------------------------
+
+# Inline link markup delimiters -- see the format note on pack_article_record
+# for the on-disk side of this. Chosen as C0 control bytes that never occur
+# in normal prose, so the on-device renderer can split on them with no
+# regex/markup parser at all.
+_LINK_RS = "\x1e"   # segment delimiter: alternates plain/link segments
+_LINK_US = "\x1f"   # within a link segment, separates record id from display text
+
+_DROPPED_TAGS = frozenset(("ref", "table", "gallery", "references"))
+_DROPPED_LINK_NAMESPACES = frozenset(("file", "image", "category"))
+
+# Any stray C0 control byte that could be confused with our own markers
+# (or is otherwise not printable prose) gets stripped from source text
+# before it reaches the output -- see pack_article_record's format note.
+_STRAY_CONTROL_RE = re.compile("[\x00-\x1f\x7f]")
+
+_WHITESPACE_RUN_RE = re.compile(r"[ \t]+")
+_BLANK_LINE_RUN_RE = re.compile(r"\n{3,}")
+
+
+def _strip_wiki_tables(text):
+    """ mwparserfromhell doesn't model MediaWiki's pipe-table syntax
+    ("{| ... |}") as a distinct node -- it's line-oriented markup, not
+    template/tag syntax -- so a naive parse leaves raw pipes and cell
+    markers in the output. Strip balanced {| ... |} blocks up front,
+    with a small depth counter since tables can nest (rare, but seen
+    on Simple Wikipedia's more elaborate infobox-adjacent pages). """
+    out = []
+    depth = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i:i + 2] == "{|":
+            depth += 1
+            i += 2
+            continue
+        if text[i:i + 2] == "|}" and depth > 0:
+            depth -= 1
+            i += 2
+            continue
+        if depth == 0:
+            out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def _resolve_link_target(raw_title, title_to_record_id, redirect_map, max_redirect_depth):
+    """ Normalizes raw_title and looks it up in the kept-article set,
+    following redirect_map chains (with a depth cap and a cycle
+    guard) when the direct title isn't itself a kept article. Returns
+    a record id, or None if the link is dead (or a runaway/cyclic
+    redirect chain). """
+    title = normalize_title(raw_title)
+    seen = set()
+    for _ in range(max_redirect_depth + 1):
+        record_id = title_to_record_id.get(title)
+        if record_id is not None:
+            return record_id
+        if title in seen:
+            return None
+        seen.add(title)
+        next_title = redirect_map.get(title)
+        if next_title is None:
+            return None
+        title = next_title
+    return None
+
+
+def _clean_text(raw):
+    return _STRAY_CONTROL_RE.sub("", raw)
+
+
+def _walk_nodes(nodes, title_to_record_id, redirect_map, max_redirect_depth, link_ids, out):
+    for node in nodes:
+        kind = type(node).__name__
+
+        if kind == "Text":
+            out.append(_clean_text(str(node)))
+
+        elif kind == "Wikilink":
+            target_raw = str(node.title).strip()
+            namespace = target_raw.split(":", 1)[0].strip().lower() if ":" in target_raw else ""
+            if namespace in _DROPPED_LINK_NAMESPACES:
+                continue  # file/image/category links (and any caption text) are dropped whole
+
+            display = _clean_text(str(node.text).strip() if node.text is not None else target_raw)
+            record_id = _resolve_link_target(
+                target_raw, title_to_record_id, redirect_map, max_redirect_depth
+            )
+            if record_id is None:
+                out.append(display)
+            else:
+                link_ids.append(record_id)
+                out.append(_LINK_RS + str(record_id) + _LINK_US + display + _LINK_RS)
+
+        elif kind == "ExternalLink":
+            if node.title is not None:
+                out.append(_clean_text(str(node.title).strip()))
+            # else: a bare URL with no display text -- dead weight offline, drop it
+
+        elif kind == "HTMLEntity":
+            try:
+                out.append(node.normalize())
+            except ValueError:
+                pass
+
+        elif kind == "Heading":
+            _walk_nodes(node.title.nodes, title_to_record_id, redirect_map,
+                        max_redirect_depth, link_ids, out)
+            out.append("\n")
+
+        elif kind == "Tag":
+            if str(node.tag) not in _DROPPED_TAGS:
+                _walk_nodes(node.contents.nodes, title_to_record_id, redirect_map,
+                            max_redirect_depth, link_ids, out)
+
+        # Template, Comment, Argument, and dropped Tag nodes are silently
+        # skipped -- a TUI can't usefully render any of them.
+
+
+def clean_wikitext(wikitext, title_to_record_id, redirect_map, max_redirect_depth=5):
+    """ Converts raw wikitext into (body_bytes, link_record_ids):
+    plain readable text with inline link markers (see _LINK_RS/_LINK_US
+    above), and the list of record ids referenced by those markers, in
+    the order they appear.
+
+    title_to_record_id maps normalized kept-article titles to their
+    record id; redirect_map maps normalized redirect-page titles to
+    their normalized target title (possibly another redirect, up to
+    max_redirect_depth hops). Links that don't resolve to a kept
+    article render as plain display text with no markers. """
+    wikitext = _strip_wiki_tables(wikitext)
+    code = mwparserfromhell.parse(wikitext)
+
+    for template in code.filter_templates(recursive=True):
+        try:
+            code.remove(template)
+        except ValueError:
+            pass
+    for comment in code.filter_comments(recursive=True):
+        try:
+            code.remove(comment)
+        except ValueError:
+            pass
+
+    link_ids = []
+    out = []
+    _walk_nodes(code.nodes, title_to_record_id, redirect_map, max_redirect_depth, link_ids, out)
+
+    text = "".join(out)
+    text = _WHITESPACE_RUN_RE.sub(" ", text)
+    text = _BLANK_LINE_RUN_RE.sub("\n\n", text)
+    # Plain str.strip() also treats \x1c-\x1f as whitespace (their Unicode
+    # bidirectional class is "space"-like) and would eat a leading/trailing
+    # _LINK_RS marker whenever an article starts or ends with a link --
+    # strip only real whitespace explicitly instead.
+    text = text.strip(" \t\r\n")
+
+    return text.encode("utf-8"), link_ids

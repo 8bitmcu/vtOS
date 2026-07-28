@@ -230,3 +230,115 @@ def test_chunk_articles_oversized_record_gets_its_own_chunk():
     assert chunks[0] == (b"abc", [("small1", 0, 3)])
     assert chunks[1] == (big, [("big", 0, 500)])
     assert chunks[2] == (b"def", [("small2", 0, 3)])
+
+
+# ---------------------------------------------------------------------------
+# clean_wikitext
+# ---------------------------------------------------------------------------
+
+def _links(body_bytes):
+    """Splits a cleaned body on the RS marker, for readable assertions."""
+    return body_bytes.decode("utf-8").split("\x1e")
+
+
+def test_clean_wikitext_plain_paragraph_has_no_markers():
+    body, link_ids = wc.clean_wikitext(
+        "Ants are insects that live in colonies.", {}, {}
+    )
+    assert body == b"Ants are insects that live in colonies."
+    assert link_ids == []
+
+
+def test_clean_wikitext_resolves_piped_link_to_existing_article():
+    titles = {"Insect": 5}
+    body, link_ids = wc.clean_wikitext("Ants are [[Insect|insects]].", titles, {})
+    assert link_ids == [5]
+    segments = _links(body)
+    assert segments[0] == "Ants are "
+    assert segments[1] == "5\x1finsects"
+    assert segments[2] == "."
+
+
+def test_clean_wikitext_unpiped_link_uses_title_as_display():
+    titles = {"Insect": 5}
+    body, link_ids = wc.clean_wikitext("Ants are [[Insect]].", titles, {})
+    segments = _links(body)
+    assert segments[1] == "5\x1fInsect"
+    assert link_ids == [5]
+
+
+def test_clean_wikitext_resolves_link_through_redirect_chain():
+    titles = {"United States": 9}
+    redirects = {"USA": "United States"}
+    body, link_ids = wc.clean_wikitext("[[USA]] is a country.", titles, redirects)
+    assert link_ids == [9]
+    segments = _links(body)
+    assert segments[1] == "9\x1fUSA"
+
+
+def test_clean_wikitext_dead_link_renders_as_plain_text():
+    body, link_ids = wc.clean_wikitext("See [[Nonexistent Article|here]] for more.", {}, {})
+    assert link_ids == []
+    assert b"\x1e" not in body
+    assert body == b"See here for more."
+
+
+def test_clean_wikitext_redirect_cycle_is_treated_as_dead_link():
+    redirects = {"A": "B", "B": "A"}
+    body, link_ids = wc.clean_wikitext("[[A]]", {}, redirects)
+    assert link_ids == []
+    assert body == b"A"
+
+
+def test_clean_wikitext_drops_templates_entirely():
+    body, link_ids = wc.clean_wikitext(
+        "{{Infobox animal|name=Ant}}Ants are insects.", {}, {}
+    )
+    assert body == b"Ants are insects."
+
+
+def test_clean_wikitext_drops_ref_tags_but_keeps_surrounding_text():
+    body, link_ids = wc.clean_wikitext(
+        "Ants are insects<ref>Some citation, 2020.</ref> that live in colonies.", {}, {}
+    )
+    assert body == b"Ants are insects that live in colonies."
+
+
+def test_clean_wikitext_drops_wiki_tables():
+    wikitext = "Before.\n{|class=\"wikitable\"\n|Row1||Cell\n|-\n|Row2||Cell\n|}\nAfter."
+    body, link_ids = wc.clean_wikitext(wikitext, {}, {})
+    text = body.decode("utf-8")
+    assert "Before." in text
+    assert "After." in text
+    assert "wikitable" not in text
+    assert "{|" not in text and "|}" not in text
+
+
+def test_clean_wikitext_drops_file_and_image_links_including_caption():
+    body, link_ids = wc.clean_wikitext(
+        "Look at this.[[File:Ant.jpg|thumb|A big ant]] Ants are small.", {}, {}
+    )
+    text = body.decode("utf-8")
+    assert "big ant" not in text.lower()
+    assert "Look at this." in text
+    assert "Ants are small." in text
+
+
+def test_clean_wikitext_strips_bold_and_italic_markup_keeps_text():
+    body, link_ids = wc.clean_wikitext("'''Ants''' are ''small'' insects.", {}, {})
+    assert body == b"Ants are small insects."
+
+
+def test_clean_wikitext_external_link_keeps_display_text_drops_url():
+    body, link_ids = wc.clean_wikitext(
+        "See [https://example.com/ants the ant page] for details.", {}, {}
+    )
+    text = body.decode("utf-8")
+    assert "the ant page" in text
+    assert "example.com" not in text
+
+
+def test_clean_wikitext_strips_stray_control_bytes_from_source_text():
+    body, link_ids = wc.clean_wikitext("Weird\x1etext\x1fhere.", {}, {})
+    assert b"\x1e" not in body
+    assert b"\x1f" not in body

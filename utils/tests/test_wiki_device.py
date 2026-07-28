@@ -25,7 +25,7 @@ _WIKI_BIN_DIR = os.path.abspath(
 @pytest.fixture(scope="module")
 def wiki_module():
     class _FakeDeflateIO:
-        def __init__(self, stream, fmt=None):
+        def __init__(self, stream, fmt=None, wbits=0, close=False):
             self._stream = stream
 
         def read(self):

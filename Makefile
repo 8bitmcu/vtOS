@@ -124,10 +124,6 @@ core_dump:
 wikiconvert-image:
 	docker build -t $(WIKICONVERT_IMAGE) utils/
 
-# Runs utils/wikiconvert.py in Docker so you don't need mwparserfromhell/
-# requests installed locally. Output lands in utils/wiki-data/ (gitignored)
-# by default, same as running the script directly. Pass extra flags with
-# ARGS, e.g: make wikiconvert ARGS="--limit 500"
 wikiconvert: wikiconvert-image
 	docker run --rm \
 		-v $(shell pwd)/utils:/work \

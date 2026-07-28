@@ -85,6 +85,50 @@ def _read_chunk_table(raw, header):
     return entries
 
 
+_LONG_TITLE_DUMP_XML = """<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/">
+  <page>
+    <title>Ant</title>
+    <ns>0</ns>
+    <id>1</id>
+    <revision>
+      <text xml:space="preserve">An ant is a small insect that lives in a colony.</text>
+    </revision>
+  </page>
+  <page>
+    <title>Cneoridium dumosum (Nuttall) Hooker F. Collected March 26, 1960, at an Elevation of about 1450 Meters on Cerro Quemazon, 15 Miles South of Bahia de Los Angeles, Baja California, Mexico, Apparently for a Southeastward Range Extension of Some 140 Miles</title>
+    <ns>0</ns>
+    <id>2</id>
+    <revision>
+      <text xml:space="preserve">A real, absurdly long Wikipedia article title used as a herbarium specimen label.</text>
+    </revision>
+  </page>
+</mediawiki>
+"""
+
+
+def test_convert_skips_titles_too_long_for_max_title_bytes_instead_of_failing(tmp_path):
+    dump_path = tmp_path / "long-title-fixture.xml.bz2"
+    dump_path.write_bytes(bz2.compress(_LONG_TITLE_DUMP_XML.encode("utf-8")))
+    output_dir = tmp_path / "out"
+
+    # max_title_bytes=64 is too small for the absurdly long real title above
+    # (well over 200 bytes) -- that one article should be skipped with a
+    # warning, not blow up the whole conversion.
+    meta = wc.convert(
+        str(dump_path), str(output_dir),
+        chunk_size=65536, max_title_bytes=64,
+        min_article_chars=10, max_size_mb=1000,
+    )
+
+    assert meta["article_count"] == 1
+
+    raw_idx = (output_dir / "simplewiki.idx").read_bytes()
+    header = wc.parse_index_header(raw_idx)
+    rec = raw_idx[header.title_index_offset:header.title_index_offset + header.title_record_size]
+    title, _, _, _ = wc.unpack_title_record(rec, header.max_title_bytes)
+    assert title == "Ant"
+
+
 def test_convert_end_to_end_on_synthetic_dump(tmp_path):
     dump_path = _write_fixture_dump(tmp_path)
     output_dir = tmp_path / "out"

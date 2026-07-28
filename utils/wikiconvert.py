@@ -18,6 +18,7 @@ import json
 import os
 import re
 import struct
+import sys
 import time
 import xml.etree.ElementTree as ET
 import zlib
@@ -26,6 +27,16 @@ import mwparserfromhell
 import requests
 
 DEFAULT_DUMP_URL = "https://dumps.wikimedia.org/simplewiki/latest/simplewiki-latest-pages-articles.xml.bz2"
+
+# Wikimedia's dump server rejects requests with a generic/default client
+# User-Agent (like requests' own "python-requests/x.y") with a 403 --
+# see https://meta.wikimedia.org/wiki/User-Agent_policy. A browser sends
+# its own descriptive UA and isn't affected, which is why this can look
+# like it "only fails from a script."
+_DOWNLOAD_HEADERS = {
+    "User-Agent": "vtOS-wikiconvert/1 (https://github.com/8bitmcu/vtOS; "
+                  "offline Wikipedia reader data-prep script)",
+}
 
 MAGIC = b"VWIK"
 FORMAT_VERSION = 1
@@ -404,19 +415,35 @@ def clean_wikitext(wikitext, title_to_record_id, redirect_map, max_redirect_dept
 # Dump download (I/O glue -- not unit tested)
 # ---------------------------------------------------------------------------
 
+def _format_progress(written, total, width=30):
+    if total:
+        frac = min(written / total, 1.0)
+        filled = int(frac * width)
+        bar = "#" * filled + "-" * (width - filled)
+        return f"[{bar}] {frac * 100:5.1f}% ({written / 1e6:.0f}MB/{total / 1e6:.0f}MB)"
+    return f"{written / 1e6:.0f}MB downloaded (server didn't report a total size)"
+
+
 def download_dump(url, dest_path, force=False):
     """ Downloads url to dest_path, streaming to avoid holding the
     whole (multi-hundred-MB) dump in memory. Skips the download if
     dest_path already exists and looks complete, unless force=True --
     re-running the conversion while iterating on parsing logic
-    shouldn't have to re-fetch the dump every time. """
+    shouldn't have to re-fetch the dump every time.
+
+    Progress prints are explicitly flushed: stdout is fully buffered
+    (not line-buffered) whenever it isn't a real TTY -- which is the
+    case for `docker run` without -t -- so without flush=True these
+    would all queue up silently and the download would look hung
+    until the buffer happened to fill or the process exited. """
     if os.path.exists(dest_path) and not force:
-        print(f"wikiconvert: using cached dump at {dest_path} (pass --force-download to refetch)")
+        print(f"wikiconvert: using cached dump at {dest_path} (pass --force-download to refetch)",
+              flush=True)
         return dest_path
 
     tmp_path = dest_path + ".part"
-    print(f"wikiconvert: downloading {url}")
-    with requests.get(url, stream=True, timeout=60) as resp:
+    print(f"wikiconvert: downloading {url}", flush=True)
+    with requests.get(url, stream=True, timeout=60, headers=_DOWNLOAD_HEADERS) as resp:
         resp.raise_for_status()
         total = int(resp.headers.get("content-length", 0))
         written = 0
@@ -428,11 +455,10 @@ def download_dump(url, dest_path, force=False):
                 f.write(chunk)
                 written += len(chunk)
                 now = time.monotonic()
-                if now - last_report > 2:
-                    pct = f" ({100 * written / total:.1f}%)" if total else ""
-                    print(f"wikiconvert: downloaded {written / 1e6:.0f}MB{pct}", end="\r")
+                if now - last_report > 0.5:
+                    print(f"\rwikiconvert: {_format_progress(written, total)}", end="", flush=True)
                     last_report = now
-    print()
+        print(f"\rwikiconvert: {_format_progress(written, total)}", flush=True)
     os.replace(tmp_path, dest_path)
     return dest_path
 
@@ -513,14 +539,22 @@ def _is_kept_article(page, min_article_chars):
     return True
 
 
-def _collect_titles_and_redirects(dump_path, min_article_chars):
+def _collect_titles_and_redirects(dump_path, min_article_chars, max_title_bytes):
     """ Pass 1: decides the final kept-article set and assigns each a
     stable record id (= its position in normalized-title sort order),
     and separately collects every redirect's (source -> target)
     mapping regardless of whether the target ends up kept (a dangling
-    redirect just means links through it stay dead links). """
+    redirect just means links through it stay dead links).
+
+    A title that doesn't fit in max_title_bytes is skipped (with a
+    warning) rather than failing the whole conversion -- real Wikipedia
+    has a handful of legitimately absurd titles (e.g. herbarium
+    specimen labels used as article titles) far longer than any
+    reasonable fixed-width record size; losing a few of those articles
+    beats blocking every run over an outlier. """
     kept_titles = set()
     redirect_map = {}
+    skipped_long_titles = 0
 
     for page in iterate_dump_pages(dump_path):
         norm_title = normalize_title(page.title)
@@ -535,7 +569,15 @@ def _collect_titles_and_redirects(dump_path, min_article_chars):
             continue
 
         if _is_kept_article(page, min_article_chars):
+            if len(norm_title.encode("utf-8")) > max_title_bytes:
+                skipped_long_titles += 1
+                continue
             kept_titles.add(norm_title)
+
+    if skipped_long_titles:
+        print(f"wikiconvert: skipped {skipped_long_titles} article(s) with titles longer than "
+              f"--max-title-bytes={max_title_bytes} (rerun with a larger value to include them)",
+              flush=True)
 
     sorted_titles = sorted(kept_titles)
     title_to_record_id = {title: i for i, title in enumerate(sorted_titles)}
@@ -550,26 +592,21 @@ def convert(dump_path, output_dir, chunk_size=65536, max_title_bytes=96,
 
     print("wikiconvert: pass 1/2 -- collecting titles and redirects...")
     sorted_titles, title_to_record_id, redirect_map = _collect_titles_and_redirects(
-        dump_path, min_article_chars
+        dump_path, min_article_chars, max_title_bytes
     )
     if limit is not None:
         sorted_titles = sorted_titles[:limit]
         title_to_record_id = {t: i for i, t in enumerate(sorted_titles)}
     print(f"wikiconvert: keeping {len(sorted_titles)} articles, {len(redirect_map)} redirects")
 
-    for title in sorted_titles:
-        if len(title.encode("utf-8")) > max_title_bytes:
-            raise ValueError(
-                f"title {title!r} exceeds --max-title-bytes={max_title_bytes}; "
-                "rerun with a larger value"
-            )
-
     # (chunk_id, article_offset, article_len) per record id, backfilled below.
     placements_by_record = [None] * len(sorted_titles)
 
     def _packed_records():
-        print("wikiconvert: pass 2/2 -- cleaning and compressing articles...")
+        print("wikiconvert: pass 2/2 -- cleaning and compressing articles...", flush=True)
         emitted = 0
+        start = time.monotonic()
+        last_report = start
         for page in iterate_dump_pages(dump_path):
             norm_title = normalize_title(page.title)
             record_id = title_to_record_id.get(norm_title)
@@ -578,12 +615,25 @@ def convert(dump_path, output_dir, chunk_size=65536, max_title_bytes=96,
             if page.redirect_title is not None or parse_redirect_target(page.text) is not None:
                 continue
 
+            # Printed *before* cleaning, not after: if clean_wikitext() ever
+            # hangs or takes pathologically long on one article (a real risk
+            # with malformed/adversarial wikitext, since mwparserfromhell's
+            # parse time isn't strictly bounded by article length), this is
+            # the one piece of output that tells you which title it's stuck
+            # on -- a count-only "N/M articles" heartbeat can't.
+            print(f"\r\x1b[Kwikiconvert: [{emitted}/{len(sorted_titles)}] {norm_title}",
+                  end="", flush=True)
+
             body, link_ids = clean_wikitext(page.text, title_to_record_id, redirect_map)
             yield record_id, pack_article_record(link_ids, body)
 
             emitted += 1
-            if emitted % 5000 == 0:
-                print(f"wikiconvert: ...{emitted}/{len(sorted_titles)} articles")
+            now = time.monotonic()
+            if now - last_report > 5:
+                rate = emitted / (now - start) if now > start else 0
+                print(f"\r\x1b[Kwikiconvert: ...{emitted}/{len(sorted_titles)} articles "
+                      f"({rate:.0f}/s)", flush=True)
+                last_report = now
 
     dat_path = os.path.join(output_dir, "simplewiki.dat")
     chunk_table = []
@@ -671,6 +721,15 @@ def _packed_records_chunked(records, chunk_size):
 # ---------------------------------------------------------------------------
 
 def main(argv=None):
+    # stdout is fully (not line-) buffered whenever it isn't a real TTY --
+    # notably under `docker run` without -t -- so without this, every
+    # print() below would queue up silently instead of showing progress
+    # as pass 1/2, pass 2/2, etc. actually happen. Covers every plain
+    # print() call; the download progress bar's \r-only updates (no
+    # newline) still need their own explicit flush=True regardless,
+    # since line buffering only flushes on '\n'.
+    sys.stdout.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(
         description="Convert a Simple English Wikipedia XML dump into vtOS's "
                      "offline wiki reader format (/sd/wiki/simplewiki.{idx,dat}).",

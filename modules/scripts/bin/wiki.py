@@ -36,6 +36,17 @@ class WikiFormatError(Exception):
     pass
 
 
+def _format_exception(e):
+    """ str(exc) alone is often just "[Errno 22] EINVAL" -- useless for
+    figuring out *where* things went wrong. Captures the full traceback
+    (same as sys.print_exception() prints to the console) into a string
+    so the ERROR state can show it directly in the app's own UI, since
+    the T-Deck's screen may be the only console anyone's watching. """
+    buf = io.StringIO()
+    sys.print_exception(e, buf)
+    return buf.getvalue()
+
+
 class WikiHeader:
     __slots__ = (
         "article_count", "chunk_count", "title_record_size",
@@ -184,7 +195,7 @@ class WikiIndex:
 
         self.dat_file.seek(data_offset)
         compressed = self.dat_file.read(compressed_len)
-        stream = deflate.DeflateIO(io.BytesIO(compressed), deflate.RAW)
+        stream = deflate.DeflateIO(io.BytesIO(compressed), deflate.RAW, 15)
         decompressed = stream.read()
         if len(decompressed) != decompressed_len:
             raise WikiFormatError("chunk %d decompressed to the wrong size" % chunk_id)
@@ -336,7 +347,7 @@ def main(env, args):
                         error = "No article found for '%s'." % title
                         ui_state = "ERROR"
             except (OSError, WikiFormatError) as e:
-                error = str(e)
+                error = _format_exception(e)
                 ui_state = "ERROR"
             gc.collect()
 
@@ -371,7 +382,7 @@ def main(env, args):
                             links = {i: t for i, (_, t) in enumerate(rows) if t is not None}
                             gc.collect()
                         except (OSError, WikiFormatError) as e:
-                            error = str(e)
+                            error = _format_exception(e)
                             ui_state = "ERROR"
                         break
                 elif char == "w":
@@ -428,7 +439,7 @@ def main(env, args):
                         suggestions = []
                         ui_state = "PAGE"
                     except (OSError, WikiFormatError) as e:
-                        error = str(e)
+                        error = _format_exception(e)
                         ui_state = "ERROR"
                     gc.collect()
                     break

@@ -3,14 +3,9 @@
 # This utility converts a Simple English Wikipedia XML dump into the
 # compact binary format vtOS's `wiki` command reads from /sd/wiki/.
 #
-# Pipeline: download the dump (or use a local file), stream-parse the
-# MediaWiki XML in two passes (pass 1 collects titles/redirects, pass 2
-# cleans wikitext and emits compressed article chunks), and write out
-# an index + data file pair sized to fit comfortably under ~1GB.
-#
-# Requires: mwparserfromhell, requests (see utils/.venv for a pinned
-# environment: `uv venv utils/.venv && uv pip install --python
-# utils/.venv/bin/python mwparserfromhell pytest requests`).
+# Resulting files should be around ~170MB. Process can take 20+ min
+
+
 
 import argparse
 import bz2

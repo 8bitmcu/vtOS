@@ -116,7 +116,7 @@ You can execute the following commands from the built-in shell:
 | `vi` | Opens the vi port (based on [neatvi](https://github.com/aligrudi/neatvi)). Includes 5 configurable themes, check `.virc` |
 | `vncd` | Launches a VNC Server. Known compatible with TigerVNC. Terribly slow |
 | `webvncd` | Launches a web "VNC"-like server. Faster than `vncd` |
-| `wiki` | Offline Simple English Wikipedia reader; reads `/sd/wiki/`, gen with `utils/wikiconvert.py` |
+| `wiki` | Offline Simple English Wikipedia reader; ~170MB from SD. See `utils/wikiconvert.py` |
 | `zm` | Launches `dfrotz`, the ZMachine interpreter |
 
 To get out of the shell, type `exit`. This will bring you to the MicroPython shell, where you can type in python expressions. To get back to the built-in shell, type `sh` in the MicroPython shell.

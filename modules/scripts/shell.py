@@ -4,11 +4,12 @@
 # License: MIT
 #
 
+import gc
 import sys
 import json
 import hardware
 
-def _app(module, tui=False, audio=False, rec=False, radio=False):
+def _app(module, tui=False, audio=False, rec=False, radio=False, ble=False):
     def _run(env, *args):
         if tui:
             if not hasattr(env, 'tui') or env.tui is None:
@@ -18,17 +19,30 @@ def _app(module, tui=False, audio=False, rec=False, radio=False):
         if audio:
             if not hasattr(env, 'audio') or env.audio is None:
                 hardware.init_audio(env)
+            if not hasattr(env, 'audio') or env.audio is None:
+                return
 
         if rec:
             if not hasattr(env, 'rec') or env.rec is None:
                 hardware.init_mic(env)
+            if not hasattr(env, 'rec') or env.rec is None:
+                return
 
         if radio:
             if not hasattr(env, 'radio') or env.radio is None:
                 hardware.init_radio(env)
+            if not hasattr(env, 'radio') or env.radio is None:
+                return
+
+        if ble:
+            if not hasattr(env, 'ble') or env.ble is None:
+                hardware.init_ble(env)
+            if not hasattr(env, 'ble') or env.ble is None:
+                return
 
         app_module = __import__(module, None, None, [''])
         app_module.main(env, args)
+        gc.collect()
     return _run
 
 class Command:
@@ -90,6 +104,7 @@ class Shell:
         self.register("play",        _app("bin.player",     tui=True, audio=True))
         self.register("stream",      _app("bin.stream",     tui=True, audio=True))
         self.register("lorachat",    _app("bin.lorachat",   tui=True, radio=True))
+        self.register("blechat",     _app("bin.blechat",    tui=True, ble=True))
         self.register("rec",         _app("bin.rec",        rec=True))
         self.register("vi",          _app("modvi"))
         self.register("zm",          _app("modzm"))

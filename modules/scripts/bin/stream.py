@@ -120,11 +120,13 @@ def main(env, args):
                     if vol + 10 <= 100:
                         vol = vol + 10
                         env.audio.volume(vol)
+                        env.volume = vol
                         break
                 elif char == "s":
                     if vol - 10 >= 0:
                         vol = vol - 10
                         env.audio.volume(vol)
+                        env.volume = vol
                         break
                 elif char == "p":
                     if env.audio.is_paused():
@@ -165,5 +167,8 @@ def main(env, args):
                 err = env.audio.last_error()
                 if err != 0:
                     print("playback ended with error code", err)
+
+            env.audio.deinit()
+            env.audio = None
 
             return

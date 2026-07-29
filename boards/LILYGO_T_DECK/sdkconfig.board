@@ -14,8 +14,8 @@ CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
 CONFIG_APP_RETRIEVE_LEN_ELF_SHA=9
 
-CONFIG_ESP_TASK_WDT_PANIC=n
-CONFIG_ESP_TASK_WDT=n
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT=y
 
 CONFIG_FREERTOS_HZ=1000
 
@@ -24,3 +24,66 @@ CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
 CONFIG_ESP_ENABLE_WOLFSSH=y
 
 CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# esp32.idf_heap_info(esp32.HEAP_DATA) at a fresh boot with WiFi on, before
+# BLE ever touches anything, showed the largest internal-RAM pool (~205K)
+# already down to 4 bytes free / 0 largest-free-block from WiFi + baseline
+# system overhead alone -- i.e. before BT's own footprint is even in the
+# picture. These are stock ESP-IDF defaults (10 static RX / 32 dynamic
+# RX+TX buffers); trimming them frees internal RAM at boot for whatever
+# else needs it (BT controller init among it), at the cost of some WiFi
+# burst/throughput headroom that this project's mostly-interactive text
+# protocols (telnet/irc/ftp/gopher/gemini) shouldn't be sensitive to.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF=3
+# The generated sdkconfig carries both ESP_WIFI_* and a legacy ESP32_WIFI_*
+# alias for these same settings -- set both so whichever one this IDF
+# version actually reads picks up the reduction.
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=4
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+
+# The BLE mesh transport (modules/scripts/blemesh.py) only ever uses the
+# Broadcaster (advertise) and Observer (scan) GAP roles -- no GATT
+# connections, no pairing/bonding. Central/Peripheral roles and GATT
+# client/server stay compiled in via sdkconfig.ble's defaults regardless
+# (not trimmed here, to avoid risking a build break if MicroPython's own
+# bluetooth bindings reference central-mode NimBLE APIs unconditionally),
+# but the per-connection/bonding state they reserve can safely shrink
+# since nothing in this codebase ever opens a connection.
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_MAX_BONDS=0
+CONFIG_BT_NIMBLE_MAX_CCCDS=0
+# Bundled example GATT profile services that ship with NimBLE (Proximity,
+# Alert Notification, Current Time, Health Thermometer, Internet Protocol
+# Support, Tx Power, Immediate Alert, Link Loss, Scan Parameters, Heart
+# Rate, Battery, Device Info) -- nothing in this codebase's own GATT
+# server (there isn't one) or MicroPython's bluetooth bindings depends on
+# these, they're just optional profile implementations NimBLE bundles.
+# GAP_SERVICE is left alone since it's core/required regardless of role.
+CONFIG_BT_NIMBLE_PROX_SERVICE=n
+CONFIG_BT_NIMBLE_ANS_SERVICE=n
+CONFIG_BT_NIMBLE_CTS_SERVICE=n
+CONFIG_BT_NIMBLE_HTP_SERVICE=n
+CONFIG_BT_NIMBLE_IPSS_SERVICE=n
+CONFIG_BT_NIMBLE_TPS_SERVICE=n
+CONFIG_BT_NIMBLE_IAS_SERVICE=n
+CONFIG_BT_NIMBLE_LLS_SERVICE=n
+CONFIG_BT_NIMBLE_SPS_SERVICE=n
+CONFIG_BT_NIMBLE_HR_SERVICE=n
+CONFIG_BT_NIMBLE_BAS_SERVICE=n
+CONFIG_BT_NIMBLE_DIS_SERVICE=n
+
+# NimBLE's own host-side buffer pools (mbuf/msys pools, ACL buffers, HCI
+# event buffers -- roughly 15-20K combined) default to the same scarce
+# internal-RAM pool as everything else above. This is a Kconfig "choice"
+# (INTERNAL/EXTERNAL/DEFAULT, mutually exclusive) -- explicitly clearing
+# INTERNAL alongside setting EXTERNAL rather than relying on the choice
+# resolution to do it implicitly. These are CPU-processed host buffers,
+# not raw radio DMA buffers (those live at a lower level this option
+# doesn't touch), so PSRAM's extra access latency shouldn't matter for
+# this project's small (<=31 byte) mesh packets.
+# CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL is not set
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y

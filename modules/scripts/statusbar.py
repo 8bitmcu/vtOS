@@ -83,12 +83,13 @@ class StatusBar:
         left = b''.join(segments)
         left_cols = cols
 
-        # Right: bluetooth (static -- no BT radio wired up in this
-        # project, just a fixed label), speaker volume, battery
+        # Right: bluetooth (ON when the BLE mesh transport is active --
+        # see env.ble / hardware.init_ble), speaker volume, battery
         segments = []
         cols = 0
         icon(BT)
-        text(b'OFF ')
+        field('ble', b'OFF')
+        text(b' ')
         icon(SPKR)
         field('vol', b'  0')
         text(b'% ')
@@ -115,6 +116,7 @@ class StatusBar:
         self.off_up_sec = s_len + offsets['up_sec']
         self.off_mem    = s_len + offsets['mem']
         self.off_wifi   = s_len + offsets['wifi']
+        self.off_ble    = right_base + offsets['ble']
         self.off_vol    = right_base + offsets['vol']
         self.off_bat    = right_base + offsets['bat']
 
@@ -260,6 +262,13 @@ class StatusBar:
             self.buffer[self.off_wifi : self.off_wifi + 3] = b"ON "
         else:
             self.buffer[self.off_wifi : self.off_wifi + 3] = b"OFF"
+
+        # BLE Mesh Status -- env.ble is lazy (see hardware.init_ble),
+        # None until blechat has actually been run this boot.
+        if self.env.ble is not None:
+            self.buffer[self.off_ble : self.off_ble + 3] = b"ON "
+        else:
+            self.buffer[self.off_ble : self.off_ble + 3] = b"OFF"
 
         # Push to Terminal
         self.term.top_bar(self.buffer)

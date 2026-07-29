@@ -17,6 +17,8 @@ class Environment:
         self.shell = None
         self.audio = None
         self.sd = None
+        self.ble = None
+        self.volume = 70
         self.sd_busy = False
         self.update_font(font)
         self.update_icon_font(icon_font)

@@ -214,6 +214,36 @@ static mp_obj_t lora_get_device_errors(mp_obj_t self_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(lora_get_device_errors_obj, lora_get_device_errors);
 
+// deinit() -- sleeps the radio and releases the SPI device handle + the
+// heap-allocated RadioLib/HAL objects (EspHal::~EspHal() -> term() ->
+// spiEnd() removes just our device from the shared SPI bus, not the
+// whole bus -- see EspHal::spiBegin()'s shared-mode path). Safe to call
+// more than once; a second call is a no-op. Any other method called
+// after this will crash (self->radio etc. are null by then) -- the
+// Python side is expected to drop its reference (env.radio = None)
+// immediately after calling this, matching env.ble/env.audio's
+// teardown-on-exit pattern.
+static mp_obj_t lora_deinit(mp_obj_t self_in) {
+  lora_obj_t *self = (lora_obj_t *)MP_OBJ_TO_PTR(self_in);
+
+  if (self->radio == nullptr) {
+    return mp_const_none; // already deinitialized
+  }
+
+  self->radio->sleep();
+
+  delete self->radio;
+  delete self->mod;
+  delete self->hal;
+
+  self->radio = nullptr;
+  self->mod = nullptr;
+  self->hal = nullptr;
+
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(lora_deinit_obj, lora_deinit);
+
 // -------------------------------------------------------------------------
 // 3. Module Registration (Must be in extern "C")
 // -------------------------------------------------------------------------
@@ -227,6 +257,7 @@ static const mp_rom_map_elem_t lora_locals_dict_table[] = {
     {MP_ROM_QSTR(MP_QSTR_rssi), MP_ROM_PTR(&lora_rssi_obj)},
     {MP_ROM_QSTR(MP_QSTR_get_status), MP_ROM_PTR(&lora_get_status_obj)},
     {MP_ROM_QSTR(MP_QSTR_get_device_errors), MP_ROM_PTR(&lora_get_device_errors_obj)},
+    {MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&lora_deinit_obj)},
 };
 static MP_DEFINE_CONST_DICT(lora_locals_dict, lora_locals_dict_table);
 

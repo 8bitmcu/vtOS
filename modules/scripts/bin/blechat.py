@@ -1,5 +1,5 @@
 #
-# MicroPython TUI LoRa Chat
+# MicroPython TUI BLE Mesh Chat
 # Copyright (c) 2026 8bitmcu
 # License: MIT
 #
@@ -15,17 +15,18 @@ def _default_nick():
     return f"vtOS_{rand}"
 
 def _leave(env):
-    """Releases the LoRa radio's SPI device handle and heap-allocated
-    RadioLib/HAL objects on the way out -- without this, they stay
-    reserved for the rest of the boot session even after you're done
-    chatting (see lora.LoRa.deinit's docstring in lora.cpp)."""
-    env.radio.deinit()
-    env.radio = None
+    """Releases the BLE radio's memory back to the heap on the way out --
+    without this, it stays reserved for the rest of the boot session even
+    after you're done chatting (see BLEMesh.deinit's docstring)."""
+    env.ble.deinit()
+    env.ble = None
     env.tui.exit_altscreen()
     env.tui.cursor_show()
 
 def _format_incoming(nick, text, rssi):
-    return f"\x1b[1m{nick}\x1b[22m: {text}  \x1b[38;5;244m({rssi:.0f} dBm)\x1b[0m"
+    if rssi is None:
+        return f"\x1b[1m{nick}\x1b[22m: {text}"
+    return f"\x1b[1m{nick}\x1b[22m: {text}  \x1b[38;5;244m({rssi} dBm)\x1b[0m"
 
 def main(env, args):
     nick = args[0] if len(args) > 0 else _default_nick()
@@ -48,12 +49,15 @@ def main(env, args):
         fg=252, bg=0, input_bg=0,
         decorations=False)
 
-    chat_win.push(f"--- LoRaChat ready as {nick} ---\n/nick <name>\n/quit or ESC to leave\n")
+    chat_win.push(f"--- BLEChat ready as {nick} ---\n/nick <name>\n/quit or ESC to leave\n")
     chat_win.draw()
     env.tui.draw()
 
     env.tui.cursor_show()
-    env.radio.start_receive()
+
+    # Unlike LoRa's half-duplex antenna, BLE scanning runs continuously
+    # in the background from the moment env.ble was constructed -- there's
+    # no start_receive()/re-arm step needed here.
 
     while True:
         chat_win.draw()
@@ -62,9 +66,9 @@ def main(env, args):
 
         rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
 
-        # LoRa has no file descriptor to select() on, so poll it directly
+        # BLE has no file descriptor to select() on, so poll it directly
         # every loop iteration regardless of what stdin is doing.
-        packet = env.radio.receive()
+        packet = env.ble.receive()
         if packet:
             try:
                 text = packet.decode('utf-8')
@@ -79,10 +83,7 @@ def main(env, args):
             else:
                 peer_nick, peer_text = '?', text
 
-            chat_win.push(CYAN + _format_incoming(peer_nick, peer_text, env.radio.rssi()) + CLR + "\n")
-
-            # The chip drops back to standby after a read; re-arm to keep listening.
-            env.radio.start_receive()
+            chat_win.push(CYAN + _format_incoming(peer_nick, peer_text, env.ble.last_rssi()) + CLR + "\n")
 
         if sys.stdin in rlist:
             char = sys.stdin.read(1)
@@ -101,15 +102,10 @@ def main(env, args):
                 else:
                     msg = f"{nick}: {text}"
                     try:
-                        env.radio.transmit(msg.encode('utf-8'))
+                        env.ble.broadcast(msg.encode('utf-8'))
                         chat_win.push(RED + f"\x1b[1m{nick}\x1b[22m: {text}" + CLR + "\n")
-                    except RuntimeError as e:
+                    except ValueError as e:
                         chat_win.push(f"--- Send failed: {e} ---\n")
-                    finally:
-                        # transmit() puts the chip in TX then back to
-                        # standby (win or lose) -- re-arm RX so we're
-                        # listening again for replies.
-                        env.radio.start_receive()
                     chat_input.set("")
 
             elif char in ('\x08', '\x7f'):

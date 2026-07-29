@@ -229,6 +229,7 @@ def init_audio(env):
             bck=I2S_BCK,
             ws=I2S_WS,
             dout=I2S_DOUT)
+    env.audio.volume(env.volume)
 
 
 def init_mic(env):
@@ -284,3 +285,12 @@ def init_radio(env):
         return
 
     env.radio = lr
+
+
+def init_ble(env):
+    import blemesh
+    try:
+        env.ble = blemesh.BLEMesh()
+    except Exception as e:
+        print(f"BLE mesh initialization failed: {e}")
+        return

@@ -44,6 +44,9 @@ def main(env, args):
     bytes_written = env.rec.stop()
     print(f"Recorded {fmt_size(bytes_written)}!")
 
+    env.rec.deinit()
+    env.rec = None
+
     if to_c2:
         print(f"Encoding to {file_name}...")
         wav_size = os.stat(record_path)[6]

@@ -130,6 +130,7 @@ def apply():
 
         with open("menu/.menu.json", "x") as f:
             json.dump({
+                "BLE Chat": "blechat",
                 "Chess": "chess",
                 "Dictionary": "dict",
                 "File Manager": "fm",
@@ -141,12 +142,12 @@ def apply():
                 "LoRa Chat": "lorachat",
                 "Minesweeper": "mines",
                 "Network Manager": "nm",
+                "Offline Wikipedia": "wiki",
                 "RSS Reader": "menu rss",
                 "Stream Radio": "menu stream",
                 "Telnet": "menu telnet",
                 "USB Mass Storage": "usbmsc",
                 "vi": "vi",
-                "Offline Wikipedia": "wiki",
         }, f)
 
         with open("menu/.stream.json", "x") as f:

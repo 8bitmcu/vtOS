@@ -120,11 +120,13 @@ def main(env, args):
                     if vol + 10 <= 100:
                         vol = vol + 10
                         env.audio.volume(vol)
+                        env.volume = vol
                         break
                 elif char == "s":
                     if vol - 10 >= 0:
                         vol = vol - 10
                         env.audio.volume(vol)
+                        env.volume = vol
                         break
                 elif char == "p":
                     if env.audio.is_paused():
@@ -153,7 +155,8 @@ def main(env, args):
                 except OSError:
                     pass
 
-            # env.audio.deinit()
+            env.audio.deinit()
+            env.audio = None
 
             return
 

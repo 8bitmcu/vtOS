@@ -26,6 +26,7 @@ This project is optimized for the **LilyGO T-Deck**, leveraging MicroPython to i
 | **Memory** | 8MB PSRAM / 16MB Flash | ✅ Enabled for Large Buffer Handling |
 | **Display** | 2.4" ST7789 LCD (320x240) | ✅ Optimized SPI bus (Full Color) |
 | **LoRa Radio** | SX1262 | ✅ Own Configuration Utility |
+| **Bluetooth** | BLE (NimBLE, built-in ESP32-S3 radio) | ✅ Flood-mesh chat over `bluetooth.BLE()` |
 | **Keyboard** | LILYGO Keyboard | ✅ Mapped I2C Interface |
 | **Trackball** | LILYGO Trackball | ✅ Mapped I2C Interface |
 | **Speaker** | I2S | ✅ MP3/WAV Playback Support |
@@ -81,6 +82,7 @@ You can execute the following commands from the built-in shell:
 
 | Command | Description |
 | :---   | :--- |
+| `blechat` | A flood-mesh chatroom broadcast over Bluetooth LE advertising |
 | `chess` | Basic chess game using unicode characters |
 | `clear` | Clears the screen |
 | `c2` | Codec 2 audio/voice codec encode/decode utility |

@@ -14,6 +14,7 @@ file_association = {
     "wav": "play",
     "c2": "play",
     "idx": "wiki",
+    "epub": "epub",
 }
 
 def fmt_size(size):

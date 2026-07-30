@@ -24,9 +24,9 @@ This project is optimized for the **LilyGO T-Deck**, leveraging MicroPython to i
 | Component | Specification | Driver / Status |
 | :--- | :--- | :--- |
 | **Memory** | 8MB PSRAM / 16MB Flash | ✅ Enabled for Large Buffer Handling |
-| **Display** | 2.4" ST7789 LCD (320x240) | ✅ Optimized SPI bus (Full Color) |
-| **LoRa Radio** | SX1262 | ✅ Own Configuration Utility |
-| **Bluetooth** | BLE (NimBLE, built-in ESP32-S3 radio) | ✅ Flood-mesh chat over `bluetooth.BLE()` |
+| **Display** | SPI 2.4" ST7789 LCD (320x240) | ✅ Optimized SPI bus (Full Color) |
+| **LoRa Radio** | SPI SX1262 | ✅ Own Configuration Utility |
+| **Bluetooth** | BLE | ✅ Flood-mesh chat over BLE |
 | **Keyboard** | LILYGO Keyboard | ✅ Mapped I2C Interface |
 | **Trackball** | LILYGO Trackball | ✅ Mapped I2C Interface |
 | **Speaker** | I2S | ✅ MP3/WAV Playback Support |
@@ -88,6 +88,7 @@ You can execute the following commands from the built-in shell:
 | `c2` | Codec 2 audio/voice codec encode/decode utility |
 | `dict` | DICT protocol dictionary lookup client |
 | `echo` | Prints its arguments back out |
+| `epub` | EPUB e-book reader; open a `.epub` file and browse chapters via its table of contents |
 | `fav` | Built-in shell aliases |
 | `fc` | Font Configuration Utility. Try `menu fc` |
 | `fm` | Starts the TUI File Manager |
@@ -236,7 +237,7 @@ This project's source code is licensed under the **MIT License**. However, if yo
 * **st7789_mpy:** (c) Russ Hughes. MIT License
 * **vi** (neatvi): (c) Ali Gholami Rudi. ISC License.
 * **frotz**: (c) Stefan Jokisch, David Griffith. GPLv2 License
-* **yxml**: Copyright (c) 2013-2014 Yoran Heling. MIT License
+* **mxml**: Copyright (c) 2003-2025 Michael R Sweet. Apache License 2.0 (with GPL/LGPL linking exception)
 * **codec2**: (c) 2010 David Rowe. LGPL-2.1 License (vendored in full under `modules/codec2/vendor/`, see `modules/codec2/COPYING`)
 * **MicroPython**: (c) Damien P. George. MIT License
 

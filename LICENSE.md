@@ -56,6 +56,11 @@ The low-bitrate speech codec used by the `c2` encode/decode utility is based on 
 * **License:** **GNU Lesser General Public License v2.1**.
 * **Summary:** Unlike GPL, LGPL permits linking/combining with differently-licensed code without relicensing the combined work, provided the LGPL-covered portion remains modifiable and its complete corresponding source is available. This repository vendors codec2's full source verbatim under `modules/codec2/vendor/` (see `modules/codec2/COPYING` for the license text in full) to satisfy that.
 
+### mxml (Mini-XML)
+The `modxml` module's XML parsing is based on Mini-XML, vendored under `modules/modxml/mxml/`.
+* **Copyright:** © 2003-2025 by Michael R Sweet.
+* **License:** **Apache License 2.0**, with an additional exception permitting combination with GPLv2/LGPLv2-licensed code (relevant here alongside `frotz` and `codec2`; see `modules/modxml/mxml/NOTICE` for the exception's exact terms).
+
 ### Terminus Font
 * **Copyright:** (c) 2020 Dimitar Zhekov. 
 * **License:** **SIL Open Font License 1.1**.

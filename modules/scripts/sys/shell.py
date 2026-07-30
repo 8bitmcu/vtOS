@@ -100,6 +100,7 @@ class Shell:
         self.register("gopher",      _app("bin.gopher",     tui=True))
         self.register("dict",        _app("bin.dict",       tui=True))
         self.register("wiki",        _app("bin.wiki",       tui=True))
+        self.register("epub",        _app("bin.epub",       tui=True))
         self.register("fc",          _app("bin.fontcfg",    tui=True))
         self.register("play",        _app("bin.player",     tui=True, audio=True))
         self.register("stream",      _app("bin.stream",     tui=True, audio=True))
@@ -338,14 +339,12 @@ class Shell:
                 print(char, end='')
 
     def run(self):
-        ver = sys.implementation.version
-        version_str = f"{ver[0]}.{ver[1]}.{ver[2]}"
-        # TODO: move versioning to makefile
-        print(f"vtOS v0.1.14-dev; MicroPython v{version_str}\nType 'help' to see commands.")
 
         self.running = True
 
         if not self._rc_ran:
+            # TODO: move versioning to makefile
+            print("\x1b[2A\r\x1b[2K\x1b[38;5;45mvtOS v0.1.14-dev.\n\x1b[2KType 'help' to see commands.\x1b[0m")
             self._rc_ran = True
             self._run_rc_file()
 

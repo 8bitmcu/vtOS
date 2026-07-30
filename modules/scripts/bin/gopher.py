@@ -330,6 +330,10 @@ def main(env, args):
                     pager.up()
                 elif char == "s":
                     pager.down()
+                elif char == "W":
+                    pager.page_up()
+                elif char == "S":
+                    pager.page_down()
                 elif char == "n":
                     pager.next_link()
                 elif char == "N":

@@ -1705,6 +1705,28 @@ static mp_obj_t vttui_pager_down(mp_obj_t self_in) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_down_obj, vttui_pager_down);
 
+// Scrolls a full page (self->height rows) at a time -- same clamping
+// shape pager_scroll_to_row() below uses.
+static mp_obj_t vttui_pager_page_up(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  self->scroll_row -= self->height;
+  if (self->scroll_row < 0)
+    self->scroll_row = 0;
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_page_up_obj, vttui_pager_page_up);
+
+static mp_obj_t vttui_pager_page_down(mp_obj_t self_in) {
+  vttui_pager_obj_t *self = MP_OBJ_TO_PTR(self_in);
+  int max_scroll =
+      self->row_count > self->height ? self->row_count - self->height : 0;
+  self->scroll_row += self->height;
+  if (self->scroll_row > max_scroll)
+    self->scroll_row = max_scroll;
+  return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(vttui_pager_page_down_obj, vttui_pager_page_down);
+
 // Scrolls just enough (never more) to bring row_idx into the visible
 // window -- same clamping shape as list_set_selected()'s multirow branch.
 static void pager_scroll_to_row(vttui_pager_obj_t *self, int row_idx) {
@@ -1752,6 +1774,8 @@ static const mp_rom_map_elem_t vttui_pager_locals_dict_table[] = {
     {MP_ROM_QSTR(MP_QSTR_draw), MP_ROM_PTR(&vttui_pager_draw_obj)},
     {MP_ROM_QSTR(MP_QSTR_up), MP_ROM_PTR(&vttui_pager_up_obj)},
     {MP_ROM_QSTR(MP_QSTR_down), MP_ROM_PTR(&vttui_pager_down_obj)},
+    {MP_ROM_QSTR(MP_QSTR_page_up), MP_ROM_PTR(&vttui_pager_page_up_obj)},
+    {MP_ROM_QSTR(MP_QSTR_page_down), MP_ROM_PTR(&vttui_pager_page_down_obj)},
     {MP_ROM_QSTR(MP_QSTR_next_link), MP_ROM_PTR(&vttui_pager_next_link_obj)},
     {MP_ROM_QSTR(MP_QSTR_prev_link), MP_ROM_PTR(&vttui_pager_prev_link_obj)},
 };

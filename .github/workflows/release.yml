@@ -79,6 +79,19 @@ jobs:
           rm -rf micropython/ports/esp32/boards/LILYGO_T_DECK
           cp -r vtOS/boards/LILYGO_T_DECK micropython/ports/esp32/boards/
 
+          # Commit the copied board files into the micropython checkout so
+          # `git describe --dirty` (used for the version banner) doesn't
+          # flag the build as dirty just because of this copy -- same fix
+          # as the Makefile's build target. Then move the local v1.28.0
+          # tag onto HEAD unconditionally (not just on a fresh commit --
+          # a cache hit may already be sitting 1+ commits past the tag
+          # from a prior run, and that needs re-tagging too, or describe
+          # keeps reporting "v1.28.0-N-g<hash>" forever) so describe
+          # reports a clean "v1.28.0".
+          git -C micropython add -A
+          git -C micropython -c user.email="build@vtos.local" -c user.name="vtOS Build" commit -q -m "vtOS board files" || true
+          git -C micropython tag -f v1.28.0 || true
+
           . $HOME/esp/esp-idf/export.sh
           cd micropython
           # This step catches any architecture-specific submodules if required
@@ -95,6 +108,14 @@ jobs:
           export MPY_USER_DIR=$(pwd)/micropython
 
           cp $GITHUB_WORKSPACE/vtOS/modules/idf_component.yml micropython/ports/esp32/main/idf_component.yml
+
+          # Same reasoning as the board-files commit above -- keep the
+          # checkout non-dirty, and always re-tag HEAD (not just on a
+          # fresh commit) so describe reports a clean "v1.28.0" rather
+          # than "v1.28.0-N-g<hash>".
+          git -C micropython add -A
+          git -C micropython -c user.email="build@vtos.local" -c user.name="vtOS Build" commit -q -m "vtOS idf_component.yml" || true
+          git -C micropython tag -f v1.28.0 || true
 
           cd micropython/ports/esp32
 

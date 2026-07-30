@@ -1,4 +1,4 @@
-# Exercises modules/scripts/blemesh.py's pure protocol logic (envelope
+# Exercises modules/scripts/lib/blemesh.py's pure protocol logic (envelope
 # pack/unpack, advertising-payload framing, dedup cache, fragment
 # reassembly) under plain CPython. The BLEMesh transport class itself
 # needs a real bluetooth.BLE()/NimBLE radio and can't run here, but the
@@ -11,7 +11,7 @@ import sys
 import pytest
 
 _BLEMESH_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "modules", "scripts")
+    os.path.join(os.path.dirname(__file__), "..", "..", "modules", "scripts", "lib")
 )
 
 

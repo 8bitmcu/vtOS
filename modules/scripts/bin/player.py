@@ -27,6 +27,8 @@ def main(env, args):
 
     if not file:
         print("Usage: play <file>")
+        env.audio.deinit()
+        env.audio = None
         return
 
     file_sz = os.stat(file)[6]

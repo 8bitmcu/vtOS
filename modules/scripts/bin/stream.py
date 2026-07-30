@@ -18,6 +18,8 @@ def main(env, args):
     url = args[0] if len(args) > 0 else None
     if not url:
         print("Usage: stream <url>")
+        env.audio.deinit()
+        env.audio = None
         return
 
     vol = env.audio.volume()

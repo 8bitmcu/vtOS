@@ -34,6 +34,9 @@ env.kvm = tdeck_kvm.KVM(env.term, kbd)
 # Redirect to REPL
 os.dupterm(env.kvm)
 
+# Write the MicroPython prompt in red
+sys.stdout.write("\x1b[38;5;210m")
+
 # Status bar component
 env.sts = statusbar.StatusBar(env.term, env, width=env.cols)
 env.sts.refresh()
@@ -123,6 +126,5 @@ env.shell = shell.Shell(env)
 # just type `sh` into MicroPython to return to our shell
 sh = Cmd(env.shell.run)
 
-# "REPL" into a custom, simple shell
-env.shell.run()
-
+# Inject / "run" our shell (we do it this way so we get the MicroPython banner / shell first)
+env.kvm.inject("sh\r")

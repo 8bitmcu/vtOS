@@ -57,6 +57,9 @@ build:
 		$(IDF_IMAGE) \
 		/bin/bash -c "cp -r /opt/boards/* /opt/micropython/ports/esp32/boards/ && \
 			cp /opt/all_modules/idf_component.yml /opt/micropython/ports/esp32/main/idf_component.yml && \
+			(git -C /opt/micropython add -A; \
+				git -C /opt/micropython -c user.email='build@vtos.local' -c user.name='vtOS Build' commit -q -m 'vtOS board files'; \
+				git -C /opt/micropython tag -f $(MPY_BRANCH)) || true && \
 			mkdir -p /opt/esp/idf/components/esp_hw_support/mspi_timing_tuning/port/esp32s3/include && \
 			source /opt/esp/idf/export.sh && \
 			make -C /opt/micropython/mpy-cross && \

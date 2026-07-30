@@ -9,6 +9,24 @@ import sys
 import modxml
 import requests
 
+def _find_all(node, tag, out):
+    """ Recursively collects every element (at any depth) with the given
+    tag name, depth-first -- <item> sits a couple of levels below the
+    <rss> root (<rss><channel><item>...), not as a direct child. """
+    if node["tag"] == tag:
+        out.append(node)
+    for child in node["children"]:
+        _find_all(child, tag, out)
+
+def _find_text(node, tag):
+    """ Returns the text of the first direct child with the given tag
+    name, or "" if absent -- <title>/<description> are always direct
+    children of <item>, never nested further. """
+    for child in node["children"]:
+        if child["tag"] == tag:
+            return child["text"]
+    return ""
+
 def main(env, args):
     """ Creates a TUI for browsing and reading RSS feeds """
 
@@ -43,12 +61,12 @@ def main(env, args):
         response = requests.get(host)
         rss_data = response.text
 
-        fields_to_grab = ("title", "description")
-        items = modxml.extract(rss_data, "item", fields_to_grab)
+        tree = modxml.parse(rss_data)
+        if tree is not None:
+            _find_all(tree, "item", items)
 
-        for _, item in enumerate(items):
-            title = item.get('title', 'N/A')
-            titles.append("- " + title)
+        for item in items:
+            titles.append("- " + (_find_text(item, "title") or "N/A"))
 
     except Exception as e:
         tui.exit_altscreen()
@@ -95,7 +113,7 @@ def main(env, args):
                     break
 
         elif ui_state == "READ_STORY":
-            desc = items[story].get('description', 'No description available.')
+            desc = _find_text(items[story], "description") or "No description available."
 
             lbl = win.make_block(desc.strip(), 0, 0,
                   width=win.inner_w, height=win.inner_h-1,

@@ -44,22 +44,23 @@ env.sts.refresh()
 # The FAST loop (30ms)
 def scheduled_fast(_):
 
-    # Trackball horizontal movement translates into going up/down the shell command history
+    # Trackball horizontal movement injects Left/Right arrow keys
+    # mapped to navigating command history
     h_delta = tdeck_trk.get_scroll_horiz()
     if abs(h_delta) > 1:
         if h_delta < 0:
-            env.kvm.inject("\x1b[A") # Injects 'Up' key into REPL
+            env.kvm.inject("\x1b[D") # Left: older command
         else:
-            env.kvm.inject("\x1b[B") # Injects 'Down' key into REPL
+            env.kvm.inject("\x1b[C") # Right: newer command
 
-    # Trackball vertical movement translates into showing history
-    # Default history is 100 lines defined as HISTSIZE in st.h
+    # Trackball vertical movement injects Up/Down arrow keys
+    # mapped to navigating shell history
     v_delta = tdeck_trk.get_scroll_vert()
     if abs(v_delta) > 1:
         if v_delta < 0:
-            env.term.scrolldown()
+            env.kvm.inject("\x1b[B") # Down
         else:
-            env.term.scrollup()
+            env.kvm.inject("\x1b[A") # Up
 
     # Long clicking will raise KeyboardInterrupt (internally to tdeck_trk)
     # Short click will inject escape

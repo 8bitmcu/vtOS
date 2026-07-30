@@ -15,6 +15,9 @@ file_association = {
     "c2": "play",
     "idx": "wiki",
     "epub": "epub",
+    "md": "md",
+    "markdown": "md",
+    "txt": "md",
 }
 
 def fmt_size(size):

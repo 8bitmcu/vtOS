@@ -1649,6 +1649,17 @@ static void render_pager_row(vttui_pager_obj_t *self, int row_idx, int y) {
                                 : self->bg;
 
     vttui_sgr(rfg, rbg, false);
+    // A styled segment that wraps across multiple rows only carries its
+    // opening escape sequence in its *first* run -- later runs continue
+    // mid-segment with plain bytes, since pager_build_index() just slices
+    // the segment's raw text by visible width. Without replaying whatever
+    // escape sequences appeared earlier in this segment (before this
+    // run's own offset), a color opened on an earlier row but not yet
+    // closed would revert to rfg/rbg here instead of carrying over --
+    // same issue render_list_item() already solves for wrapped list rows
+    // via replay_ansi_state().
+    if (run->seg_offset > 0)
+      replay_ansi_state(text, text + run->seg_offset, rfg, rbg);
     write_block_text(text + run->seg_offset, run->seg_len, rfg, rbg);
     col += run->vis_width;
   }

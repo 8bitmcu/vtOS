@@ -1,4 +1,5 @@
 import os
+import json
 
 def apply():
     try:
@@ -6,23 +7,42 @@ def apply():
 
         with open("WELCOME.md", "x") as f:
             f.write(f"# Welcome to vtOS!\n"
-                    f"This is your pocket hackable terminal.\n"
-                    f"A few things to get you started:\n"
+                    f"This is your pocket hackable terminal. A few things to get you started:\n"
                     f" \n"
-                    f"## Navigation\n"
-                    f"Trackball up/down  - scroll terminal history\n"
-                    f"Trackball left/right  - command history (up/down arrow)\n"
-                    f"Trackball click  - send Escape\n"
+                    f"## Keyboard Navigation\n"
+                    f"- `w`/`s`: Most TUI applications in vtOS support navigation with the `w` (up) and `s` (down) keys\n"
+                    f"- `W`/`S`: Some applications support page navigation with the `W` and `S` keys\n"
+                    f"- `q`: Will quit most applications.\n"
                     f" \n"
-                    f"## Tips\n"
-                    f"- Type any command name and press Enter to run it\n"
-                    f"- Files live in /flash (internal) and /sd (SD card, if inserted)\n"
-                    f"- Type exit to get out of the shell, into Micropython repl\n"
+                    f"## Trackball Navigation\n"
+                    f"- `Up`/`Down`: send `up`/`down` keys; scroll terminal history\n"
+                    f"- `Left`/`Right`: send `left`/`right` keys; scroll command history\n"
+                    f"- `Click`: send `Escape`; acts as a back button from input fields\n"
+                    f"- `Long Click`: send `KeyboardInterrupt`\n"
+                    f" \n"
+                    f"## Built-in Shell\n"
+                    f"The device first boots into the MicroPython shell and then the built-in shell is launched"
+                    f" after. The built-in shell can process commands and arguments, while the MicroPython shell"
+                    f" can process MicroPython expressions.\n"
+                    f"- Type `help` in the shell to get a list of applications.\n"
+                    f"- Type `fav` in the shell to create a new alias.\n"
+                    f"- Type `exit` to get out of the built-in shell, into the MicroPython shell.\n"
+                    f"- Type `sh` from the MicroPython shell to get back into the built-in shell.\n"
+                    f"- Create `.shellrc` in `/flash` or `/sd` to execute commands at every boot. This is useful"
+                    f" for connecting to your network every time you boot. (`nm connect <ssid> <password>`).\n"
+                    f" \n"
+                    f"## Getting Started\n"
+                    f"- Connect to your Wi-Fi network using `nm`\n"
+                    f"- Browse files in your device using `fm`\n"
+                    f"- Access `menu` for a list of interactive commands\n"
+                    f"- Change your font with `fc`. Try `menu fc` for a list\n"
+                    f"- Automate your Wi-Fi connection or font configuration on every boot with `.shellrc`\n"
+                    f"- This device is also a server, not just a client!\n"
                     f" \n"
                     f"Happy hacking!")
 
         with open(".virc", "x") as f:
-            f.write('''"Vi themes, uncomment to use:
+            f.write('''"vi themes, uncomment to use:
 "theme solarized
 "theme gruvbox
 "theme catppuccin
@@ -35,7 +55,11 @@ def apply():
         except:
             pass
 
-        import json
+        with open("menu/.md.json", "x") as f:
+            json.dump({
+                "WELCOME.md": "/flash/WELCOME.md"
+        }, f)
+
         with open("menu/.rss.json", "x") as f:
             json.dump({
                 "BBC News World": "http://feeds.bbci.co.uk/news/world/rss.xml",

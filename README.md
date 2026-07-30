@@ -99,6 +99,7 @@ You can execute the following commands from the built-in shell:
 | `irc` | Connects to an IRC channel given a server, port, nickname and channel. Try `menu irc` |
 | `loracfg` | Utility to configure LoRa frequency and power. Try `menu loracfg` |
 | `lorachat` | A basic chatroom based on the LoRa radio |
+| `md` | Markdown/plain text file viewer; open a `.md`, `.markdown` or `.txt` file |
 | `menu` | An interactive shortcut menu for commands. |
 | `mines` | Opens the minesweeper clone |
 | `nm` | TUI Network Manager. Can also be used as a command line tool |
@@ -139,6 +140,11 @@ nm connect MyNetwork "my wifi password"
 # launches the interactive menu
 menu
 ```
+
+### Still not sure where to start?
+
+Follow the on-device tutorial by launching `menu md`!
+
 
 ## 🔨 How to Build (T-Deck)
 

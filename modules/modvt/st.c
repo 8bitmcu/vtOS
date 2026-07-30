@@ -2189,6 +2189,26 @@ int twrite(const char *buf, int buflen, int show_ctrl) {
   Rune u;
   int n;
 
+  // New output snaps the view back to the live bottom, same as most
+  // terminal emulators. This is also the only place that can catch a
+  // just-typed character becoming visible: it arrives here as a plain
+  // write like any other output (echoed by e.g. shell.py's
+  // print(char, end='')), indistinguishable from command output by the
+  // time it reaches this layer -- there's no separate "this came from
+  // the keyboard" signal to hook instead.
+  //
+  // Changing term.scr alone doesn't touch term.dirty[], so rows that
+  // need to show different (live) content wouldn't actually get
+  // redrawn -- same reasoning kscrollup()/kscrolldown() already follow
+  // with their own tfulldirt() calls after changing term.scr. Only do
+  // this when we were actually scrolled back, not on every write
+  // unconditionally, which would force a full-screen redraw on every
+  // single character.
+  if (term.scr != 0) {
+    term.scr = 0;
+    tfulldirt();
+  }
+
   for (n = 0; n < buflen; n += charsize) {
     if (IS_SET(MODE_UTF8)) {
       /* process a complete utf8 char */

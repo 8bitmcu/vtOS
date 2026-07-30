@@ -101,6 +101,7 @@ class Shell:
         self.register("dict",        _app("bin.dict",       tui=True))
         self.register("wiki",        _app("bin.wiki",       tui=True))
         self.register("epub",        _app("bin.epub",       tui=True))
+        self.register("md",          _app("bin.md",         tui=True))
         self.register("fc",          _app("bin.fontcfg",    tui=True))
         self.register("play",        _app("bin.player",     tui=True, audio=True))
         self.register("stream",      _app("bin.stream",     tui=True, audio=True))
@@ -299,11 +300,17 @@ class Shell:
                 raise EOFError
 
             if char == '\x1b':
-                # Consume ESC [ A/B sequences (3 bytes total)
+                # Consume ESC [ A/B/C/D sequences (3 bytes total). These
+                # are injected by the trackball the same way a real
+                # keypress would arrive.
                 nxt = sys.stdin.read(1)
                 if nxt == '[':
                     seq = sys.stdin.read(1)
-                    if seq == 'A' and self._history:        # UP
+                    if seq == 'A':                           # UP: scroll terminal
+                        self.env.term.scrollup()
+                    elif seq == 'B':                         # DOWN: scroll terminal
+                        self.env.term.scrolldown()
+                    elif seq == 'D' and self._history:       # LEFT: older command
                         if hist_idx == len(self._history):
                             saved = buffer
                         if hist_idx > 0:
@@ -311,7 +318,7 @@ class Shell:
                             new_buf = self._history[hist_idx]
                             print('\b \b' * len(buffer) + new_buf, end='')
                             buffer = new_buf
-                    elif seq == 'B' and self._history:      # DOWN
+                    elif seq == 'C' and self._history:       # RIGHT: newer command
                         if hist_idx < len(self._history):
                             hist_idx += 1
                             new_buf = self._history[hist_idx] if hist_idx < len(self._history) else saved
@@ -344,7 +351,7 @@ class Shell:
 
         if not self._rc_ran:
             # TODO: move versioning to makefile
-            print("\x1b[2A\r\x1b[2K\x1b[38;5;45mvtOS v0.1.14-dev.\n\x1b[2KType 'help' to see commands.\x1b[0m")
+            print("\x1b[2A\r\x1b[2K\x1b[38;5;45mvtOS v0.1.14.\n\x1b[2KType 'help' to see commands.\x1b[0m")
             self._rc_ran = True
             self._run_rc_file()
 

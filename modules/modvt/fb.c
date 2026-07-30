@@ -607,7 +607,13 @@ row_render_t render_row_rgb565(Line ln, int _x1, int _y1, int _x2,
       uint16_t cursor_fg = 0xFFFF;
       int cur_x = term.c.x;
       int cur_y = term.c.y;
-      bool show_cursor = !(wmode & MODE_HIDE);
+      // term.scr == 0 means the view is at the live bottom; nonzero means
+      // scrolled back into history (TLINE() in st.h then reads from
+      // term.hist[] instead of term.line[]). The cursor's (cur_x, cur_y)
+      // is always the *live* cursor position, which doesn't correspond to
+      // anything meaningful on a scrolled-back, historical view -- so
+      // just don't draw it while scrolled away from the bottom.
+      bool show_cursor = !(wmode & MODE_HIDE) && term.scr == 0;
       int style = term.cursor_style;
 
       // Rendering loop

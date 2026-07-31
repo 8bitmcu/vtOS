@@ -40,6 +40,10 @@ class Environment:
             self.term.top_offset(self.status_height)
             self.sts.update_width(self.cols)
 
+        if self.tui:
+            self.tui.cols = self.cols
+            self.tui.rows = self.rows
+
     def update_icon_font(self, font_name):
         if font_name is None:
             self.icon_font = None

@@ -351,7 +351,7 @@ class Shell:
 
         if not self._rc_ran:
             # TODO: move versioning to makefile
-            print("\x1b[2A\r\x1b[2K\x1b[38;5;45mvtOS v0.1.14.\n\x1b[2KType 'help' to see commands.\x1b[0m")
+            print("\x1b[2A\r\x1b[2K\x1b[38;5;45mvtOS v0.1.15-dev.\n\x1b[2KType 'help' to see commands.\x1b[0m")
             self._rc_ran = True
             self._run_rc_file()
 

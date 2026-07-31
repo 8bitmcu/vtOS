@@ -38,7 +38,7 @@ os.dupterm(env.kvm)
 sys.stdout.write("\x1b[38;5;210m")
 
 # Status bar component
-env.sts = statusbar.StatusBar(env.term, env, width=env.cols)
+env.sts = statusbar.StatusBar(env)
 env.sts.refresh()
 
 # The FAST loop (30ms)
@@ -98,10 +98,16 @@ def slow_loop(_):
 
 # 30ms = ~33 FPS.
 draw_timer = machine.Timer(0)
-draw_timer.init(period=30, mode=machine.Timer.PERIODIC, callback=fast_loop)
+draw_timer.init(
+    period=30,
+    mode=machine.Timer.PERIODIC,
+    callback=fast_loop)
 
 statusbar_timer = machine.Timer(1)
-statusbar_timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=slow_loop)
+statusbar_timer.init(
+    period=1000,
+    mode=machine.Timer.PERIODIC,
+    callback=slow_loop)
 
 # Choose your cursor:
 

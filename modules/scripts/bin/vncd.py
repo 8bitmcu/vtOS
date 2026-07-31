@@ -119,7 +119,14 @@ def _rgb565_row_to_pixfmt(src, n_bytes, dst, fmt):
     return oi
 
 def _scan_changed(conn):
-    term = conn.env.term
+    env = conn.env
+
+    if conn.rows != env.rows:
+        conn.rows = env.rows
+        conn.row_indices = [-1] + list(range(env.rows))
+        conn.prev_checksums = [None] * (1 + env.rows)
+
+    term = env.term
     mv = conn.row565_mv
     found = []
     for idx, y in enumerate(conn.row_indices):
@@ -167,6 +174,7 @@ class _Conn:
         self.row565_mv = memoryview(self.row565_buf)  # reused for crc32 -- avoids a new memoryview per row per scan
         self.row_buf = bytearray(env.screen_width * _MAX_FONT_HEIGHT * 4)
         self.current_format = _DEFAULT_FORMAT
+        self.rows = env.rows  # rows row_indices/prev_checksums were built for -- see _scan_changed()
         self.row_indices = [-1] + list(range(env.rows))  # bar + text rows, computed once
         self.prev_checksums = [None] * (1 + env.rows)  # None forces a full first send
 

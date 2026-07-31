@@ -55,13 +55,18 @@ def run_script(path, env, tui):
     apps that manage their own screen), an ad hoc script is likely just
     a few print() statements -- pause for a keypress afterward so that
     output (or a traceback) is actually visible before wiping back to
-    the file manager."""
+    the file manager. If the script defines main(env, args), it's called
+    with an empty args list, same as shell.py does for registered apps --
+    that way a script can be written exactly like any other app."""
     tui.cursor_show()
     tui.clear_screen()
     try:
         with open(path) as f:
             src = f.read()
-        exec(src, {"env": env, "__name__": "__main__"})
+        g = {"env": env, "__name__": "__main__"}
+        exec(src, g)
+        if callable(g.get("main")):
+            g["main"](env, [])
     except Exception as e:
         sys.print_exception(e)
     print("\n[Press any key to continue]")

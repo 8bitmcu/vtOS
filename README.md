@@ -6,13 +6,9 @@ This project implements a high-performance, attribute-aware terminal emulator fo
 
 As a showcase of the engine's capabilities, this project includes a fully functional, VFS-aware C port of [neatvi](https://github.com/aligrudi/neatvi), a **vi/ex text editor**, and [frotz](https://davidgriffith.gitlab.io/frotz/) **ZMachine interpreter** that supports playing classic text games like [Zork](https://en.wikipedia.org/wiki/Zork). The firmware provides a Python-based **Telnet client**, **FTP server**, a TUI based **File Manager**, **IRC Client**, **RSS Reader** and  **Network Manager** demonstrating how the terminal engine can be easily extended.
 
-| ASCII demo (running on CYD) | vi app |
+| application slideshow | vi app |
 | :---: | :---: |
-| <img src="assets/screen.gif" alt="ascii demo" width="400"> | <img src="assets/screen2.jpg" alt="vi app" width="400"> |
-
-| Minesweeper (telnet) | Zork (telnet) |
-| :---: | :---: |
-| <img src="assets/screen3.jpg" alt="minesweeper" width="400"> | <img src="assets/screen4.jpg" alt="zork" width="400"> |
+| <img src="assets/capture.gif" alt="screen capture" width="320"> | <img src="assets/pic.jpg" alt="vi app" width="320"> |
 
 
 ## 📟 T-Deck Hardware Integration
@@ -27,8 +23,8 @@ This project is optimized for the **LilyGO T-Deck**, leveraging MicroPython to i
 | **Display** | SPI 2.4" ST7789 LCD (320x240) | ✅ Optimized SPI bus (Full Color) |
 | **LoRa Radio** | SPI SX1262 | ✅ Own Configuration Utility |
 | **Bluetooth** | BLE | ✅ Flood-mesh chat over BLE |
-| **Keyboard** | LILYGO Keyboard | ✅ Mapped I2C Interface |
-| **Trackball** | LILYGO Trackball | ✅ Mapped I2C Interface |
+| **Keyboard** | I2C | ✅ Mapped Interface |
+| **Trackball** | GPIO | ✅ Mapped Interface |
 | **Speaker** | I2S | ✅ MP3/WAV Playback Support |
 | **SD Card** | SPI | ✅ FAT formatted SD Card |
 | **Microphone** | I2S, ES7210 ADC | ❌ Noise issues |
@@ -143,7 +139,7 @@ menu
 
 ### Still not sure where to start?
 
-Follow the on-device tutorial by launching `menu md`!
+Follow the on-device tutorial by launching `menu md` or skip to the interactive menu by launching `menu`
 
 
 ## 🔨 How to Build (T-Deck)

@@ -92,6 +92,20 @@ def init_board():
     time.sleep(0.1)
 
 
+def init_bat():
+    bat_pin = machine.ADC(machine.Pin(BAT_ADC))
+    bat_pin.atten(machine.ADC.ATTN_11DB)
+    return bat_pin
+
+
+def bat_value(bat_pin):
+    raw = bat_pin.read_u16()
+    pct = ((raw * 660) // 65535) - 320
+    if pct < 0: pct = 0
+    if pct > 100: pct = 100
+    return pct
+
+
 def init_spi(env):
     # Without this, `spi = machine.SPI(...)` below would create a
     # function-local that shadows the module-level `spi` for the rest of

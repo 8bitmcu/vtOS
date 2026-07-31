@@ -54,7 +54,7 @@ def main(env, args):
             wlan.connect(ssid)
 
         timeout = 0
-        print("Connecting", end="")
+        print("Connecting to WiFi", end="")
         while not wlan.isconnected():
             sys.stdout.write(".")
             time.sleep(1)

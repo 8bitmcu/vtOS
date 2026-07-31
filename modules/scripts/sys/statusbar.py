@@ -4,7 +4,6 @@
 # License: MIT
 #
 
-import machine
 import time
 import network
 import gc
@@ -20,13 +19,11 @@ BAT    = chr(0xE033).encode()
 
 class StatusBar:
 
-    def __init__(self, terminal, env, width=40):
-        self.term = terminal
+    def __init__(self, env):
         self.env = env  # needed for env.audio.volume() -- audio is optional/lazy
         self.start_ticks = time.ticks_ms()
-        self.bat_pin = machine.ADC(machine.Pin(hardware.BAT_ADC))
-        self.bat_pin.atten(machine.ADC.ATTN_11DB)
         self.wlan = network.WLAN(network.STA_IF)
+        self.bat_pin = hardware.init_bat()
 
         self.style = b"\033[38;5;0m\033[48;5;252m"
         self.clear = b"\033[0m"
@@ -39,7 +36,7 @@ class StatusBar:
         self._notify_style = b"\033[38;5;255m\033[48;5;167m"
 
         # Initialize the layout and calculate offsets dynamically via the new method
-        self.update_width(width)
+        self.update_width(env.cols)
 
     def update_width(self, width):
         """Regenerates the layout template and recalculates internal offsets dynamically."""
@@ -155,7 +152,7 @@ class StatusBar:
             left_pad = pad // 2
             text = b' ' * left_pad + text + b' ' * (pad - left_pad)
 
-        self.term.top_bar(self._notify_style + text + self.clear + b"\x00")
+        self.env.term.top_bar(self._notify_style + text + self.clear + b"\x00")
 
     def refresh(self):
         # top_bar() (below and in _render_notification()) writes straight
@@ -184,10 +181,7 @@ class StatusBar:
         secs = total_sec % 60
 
         # Scaled integer math for battery percentage
-        raw = self.bat_pin.read_u16()
-        pct = ((raw * 660) // 65535) - 320
-        if pct < 0: pct = 0
-        if pct > 100: pct = 100
+        pct = hardware.bat_value(self.bat_pin)
 
         # 1. Memory Calculation
         mem_free = gc.mem_free()
@@ -271,4 +265,4 @@ class StatusBar:
             self.buffer[self.off_ble : self.off_ble + 3] = b"OFF"
 
         # Push to Terminal
-        self.term.top_bar(self.buffer)
+        self.env.term.top_bar(self.buffer)

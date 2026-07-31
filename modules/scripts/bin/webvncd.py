@@ -72,7 +72,18 @@ _ST_WS_MASK = 3     # 4-byte mask key (client frames are always masked)
 _ST_WS_PAYLOAD = 4
 
 def _scan_changed(conn):
-    term = conn.env.term
+    env = conn.env
+
+    if conn.rows != env.rows:
+        conn.rows = env.rows
+        conn.row_indices = [-1] + list(range(env.rows))
+        conn.prev_checksums = [None] * (1 + env.rows)
+        init = struct.pack(">BHHH", 0x00, env.screen_width, env.screen_height,
+                           env.font.HEIGHT)
+        conn.queue(_ws_frame_header(0x2, len(init)))
+        conn.queue(init)
+
+    term = env.term
     mv = conn.row565_mv
     found = []
     for idx, y in enumerate(conn.row_indices):
@@ -112,6 +123,7 @@ class _Conn:
 
         self.row565_buf = bytearray(env.screen_width * _MAX_FONT_HEIGHT * 2)
         self.row565_mv = memoryview(self.row565_buf)
+        self.rows = env.rows  # rows row_indices/prev_checksums were built for -- see _scan_changed()
         self.row_indices = [-1] + list(range(env.rows))  # bar + text rows
         self.prev_checksums = [None] * (1 + env.rows)  # None forces a full first send
         self.handshake_done = False  # scanning for changes starts once this flips

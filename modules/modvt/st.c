@@ -19,6 +19,8 @@
 #include "py/mphal.h"
 #include "py/runtime.h"
 
+#include "esp_heap_caps.h"
+
 static void ttywriteraw(const char *, size_t);
 
 static void csidump(void);
@@ -135,6 +137,33 @@ void *xrealloc(void *p, size_t len) {
     die("realloc: %s\n", strerror(errno));
 
   return p;
+}
+
+// PSRAM-preferring reallocator for term.hist[] specifically -- same
+// pattern already proven in this project for the same class of problem
+// (modules/modvi/modvi_compat.c, modules/modssh/wolfssl_shim/psram_alloc.c,
+// modules/modc2/modc2_alloc.c): scrollback is HISTSIZE (100) rows
+// regardless of how many rows actually fit on screen, so its allocation
+// scales with `col` alone and, on a small font (more columns), becomes
+// the single largest consumer of this board's already razor-thin
+// internal-RAM pool (see boards/LILYGO_T_DECK/sdkconfig.board's own
+// notes on that margin) -- competing directly with BLE/WiFi controller
+// buffers that only ever draw from internal RAM. Scrollback is read
+// rarely (only while actually scrolled back, and typing/output resets
+// to the live view -- see twrite() above), so PSRAM's extra access
+// latency doesn't matter here the way it would for term.line/term.alt
+// (the actively-rendered screen, deliberately left on fast internal RAM
+// via plain xrealloc() below). Falls back to internal RAM if PSRAM is
+// ever exhausted, rather than xrealloc()'s hard die() -- scrollback
+// degrading is far preferable to it taking the whole terminal down.
+static void *hist_xrealloc(void *p, size_t len) {
+  void *q = heap_caps_realloc(p, len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (q == NULL) {
+    q = heap_caps_realloc(p, len, MALLOC_CAP_8BIT);
+  }
+  if (q == NULL)
+    die("hist_xrealloc: out of memory\n");
+  return q;
 }
 
 char *xstrdup(const char *s) {
@@ -2272,7 +2301,7 @@ void tresize(int col, int row) {
   term.tabs = xrealloc(term.tabs, col * sizeof(*term.tabs));
 
   for (i = 0; i < HISTSIZE; i++) {
-    term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
+    term.hist[i] = hist_xrealloc(term.hist[i], col * sizeof(Glyph));
     for (j = mincol; j < col; j++) {
       term.hist[i][j] = term.c.attr;
       term.hist[i][j].u = ' ';

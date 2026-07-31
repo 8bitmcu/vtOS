@@ -1,10 +1,7 @@
 # vtOS: A terminal-based hobby firmware
 
-This project features first-class support for the [LILYGO T-Deck](https://s.click.aliexpress.com/e/_c4agv9Wd), transforming it into a standalone portable terminal.
+vtOS turns a LilyGO T-Deck into a pocket-sized, hackable terminal computer. Written in MicroPython, it boots into a built-in shell stocked with retro and modern network clients (SSH, FTP, Telnet, IRC, email, Gemini, Gopher), a TUI file manager and `vi` based editor, offline Wikipedia and e-book readers, LoRa and BLE flood-mesh chat, and a few games for good measure; while also doubling as a server you can SSH, FTP, or VNC into from another machine. Automate it with a `.shellrc`, and since it's MicroPython all the way down, the whole system is open to read, tweak, and extend.
 
-This project implements a high-performance, attribute-aware terminal emulator for MicroPython. By wrapping the [st](https://st.suckless.org/) (suckless terminal) engine in a custom C module, it achieves desktop-class terminal features on embedded hardware, including a **zero-allocation status bar** for real-time telemetry without heap fragmentation.
-
-As a showcase of the engine's capabilities, this project includes a fully functional, VFS-aware C port of [neatvi](https://github.com/aligrudi/neatvi), a **vi/ex text editor**, and [frotz](https://davidgriffith.gitlab.io/frotz/) **ZMachine interpreter** that supports playing classic text games like [Zork](https://en.wikipedia.org/wiki/Zork). The firmware provides a Python-based **Telnet client**, **FTP server**, a TUI based **File Manager**, **IRC Client**, **RSS Reader** and  **Network Manager** demonstrating how the terminal engine can be easily extended.
 
 | application slideshow | vi app |
 | :---: | :---: |
@@ -13,7 +10,7 @@ As a showcase of the engine's capabilities, this project includes a fully functi
 
 ## 📟 T-Deck Hardware Integration
 
-This project is optimized for the **LilyGO T-Deck**, leveraging MicroPython to interface with the ESP32-S3 and its integrated peripherals.
+This project is optimized for the **LilyGO T-Deck**.
 
 ### 🛠 Supported Components
 

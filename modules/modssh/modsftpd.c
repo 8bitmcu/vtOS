@@ -153,6 +153,10 @@ struct _sftpd_server_obj_t {
   mp_obj_base_t base;
 
   TaskHandle_t task; // the listener task
+  StaticTask_t task_buf; // xTaskCreateStaticPinnedToCore()'s control block
+                         // for the listener task -- distinct from each
+                         // sftpd_session_t's own task_buf above
+  StackType_t *stack;    // PSRAM-backed, see sftpd_server_start()
   volatile sftpd_state_t state;
   volatile bool stop_request;
 
@@ -1016,6 +1020,7 @@ static mp_obj_t sftpd_server_make_new(const mp_obj_type_t *type, size_t n_args,
   self->port = mp_obj_get_int(args[3]);
 
   self->task = NULL;
+  self->stack = NULL;
   self->state = SFTPD_STATE_IDLE;
   self->stop_request = false;
   self->listen_fd = -1;
@@ -1048,19 +1053,47 @@ static mp_obj_t sftpd_server_start(mp_obj_t self_in) {
     mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("already started"));
   }
 
+  // Reclaim the previous run's PSRAM stack, if any -- self->task == NULL
+  // (just confirmed above) means that task already reached its own
+  // "self->task = NULL" line and won't touch this memory again, same
+  // reasoning as this file's own session-slot reclaim above.
+  if (self->stack != NULL) {
+    heap_caps_free(self->stack);
+    self->stack = NULL;
+  }
+
   self->stop_request = false;
   self->last_error = 0;
   self->listen_fd = -1;
   self->state = SFTPD_STATE_IDLE;
 
-  BaseType_t ok = xTaskCreatePinnedToCore(
-      sftpd_task, "sftpd", SFTPD_TASK_STACK_WORDS, self, SFTPD_TASK_PRIORITY,
-      &self->task, 1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+  // PSRAM-backed stack for the listener task itself -- the per-session
+  // tasks already get this (see sftpd_task()'s accept loop); the
+  // listener never did.
+  StackType_t *stack = heap_caps_malloc(SFTPD_TASK_STACK_WORDS * sizeof(StackType_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (stack == NULL) {
+    stack = heap_caps_malloc(SFTPD_TASK_STACK_WORDS * sizeof(StackType_t),
+                             MALLOC_CAP_8BIT);
+  }
+  if (stack == NULL) {
+    mp_raise_msg(&mp_type_RuntimeError,
+                MP_ERROR_TEXT("failed to allocate sftpd task stack"));
+  }
+  self->stack = stack;
 
-  if (ok != pdPASS) {
+  TaskHandle_t task = xTaskCreateStaticPinnedToCore(
+      sftpd_task, "sftpd", SFTPD_TASK_STACK_WORDS, self, SFTPD_TASK_PRIORITY,
+      stack, &self->task_buf,
+      1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+
+  if (task == NULL) {
+    heap_caps_free(stack);
+    self->stack = NULL;
     mp_raise_msg(&mp_type_RuntimeError,
                 MP_ERROR_TEXT("failed to start sftpd task"));
   }
+  self->task = task;
 
   return mp_const_none;
 }

@@ -1,6 +1,6 @@
 # vtOS: A terminal-based hobby firmware
 
-vtOS turns a LilyGO T-Deck into a pocket-sized, hackable terminal computer. Written in MicroPython, it boots into a built-in shell stocked with retro and modern network clients (SSH, FTP, Telnet, IRC, email, Gemini, Gopher), a TUI file manager and `vi` based editor, offline Wikipedia and e-book readers, LoRa and BLE flood-mesh chat, and a few games for good measure; while also doubling as a server you can SSH, FTP, or VNC into from another machine. Automate it with a `.shellrc`, and since it's MicroPython all the way down, the whole system is open to read, tweak, and extend.
+vtOS turns a [LilyGO T-Deck](https://s.click.aliexpress.com/e/_c4agv9Wd) into a pocket-sized, hackable terminal computer. Written in MicroPython, it boots into a built-in shell stocked with retro and modern network clients (SSH, FTP, Telnet, IRC, email, Gemini, Gopher), a TUI file manager and `vi` based editor, offline Wikipedia and e-book readers, LoRa and BLE flood-mesh chat, and a few games for good measure; while also doubling as a server you can SSH, FTP, or VNC into from another machine. Automate it with a `.shellrc`, and since it's MicroPython all the way down, the whole system is open to read, tweak, and extend.
 
 
 | application slideshow | vi app |
@@ -17,7 +17,7 @@ This project is optimized for the **LilyGO T-Deck**.
 | Component | Specification | Driver / Status |
 | :--- | :--- | :--- |
 | **Memory** | 8MB PSRAM / 16MB Flash | ✅ Enabled for Large Buffer Handling |
-| **Display** | SPI 2.4" ST7789 LCD (320x240) | ✅ Optimized SPI bus (Full Color) |
+| **Display** | SPI 2.8" ST7789 LCD (320x240) | ✅ Optimized SPI bus (Full Color) |
 | **LoRa Radio** | SPI SX1262 | ✅ Own Configuration Utility |
 | **Bluetooth** | BLE | ✅ Flood-mesh chat over BLE |
 | **Keyboard** | I2C | ✅ Mapped Interface |

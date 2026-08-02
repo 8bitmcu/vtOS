@@ -128,6 +128,8 @@ typedef struct _audiorecorder_obj_t {
 
   // task control
   TaskHandle_t task;
+  StaticTask_t task_buf; // xTaskCreateStaticPinnedToCore()'s control block
+  StackType_t *stack;    // PSRAM-backed, see audiorecorder_record()
   SemaphoreHandle_t done_sem;
   volatile bool recording;
   volatile bool stop_request;
@@ -513,6 +515,7 @@ static mp_obj_t audiorecorder_make_new(const mp_obj_type_t *type, size_t n_args,
   self->sample_rate = parsed[ARG_sample_rate].u_int;
   self->channels = parsed[ARG_channels].u_int;
   self->task = NULL;
+  self->stack = NULL;
   self->recording = false;
   self->stop_request = false;
   self->last_error = 0;
@@ -711,6 +714,21 @@ static mp_obj_t audiorecorder_record(size_t n_args, const mp_obj_t *pos_args,
                  MP_ERROR_TEXT("already recording; call stop() first"));
   }
 
+  // Reclaim the previous recording's PSRAM stack if record() is being
+  // called again without an intervening stop() (e.g. it hit its own
+  // seconds= limit). self->recording == false (just confirmed above)
+  // means audio_record_task() already reached its own "self->recording =
+  // false; xSemaphoreGive(done_sem)" exit sequence -- take done_sem
+  // (returns immediately, since it's already given) to synchronize with
+  // that before freeing the stack out from under it, same reasoning as
+  // audiorecorder_stop()'s identical take just below.
+  if (self->stack != NULL) {
+    xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000));
+    heap_caps_free(self->stack);
+    self->stack = NULL;
+    self->task = NULL;
+  }
+
   // VFS-aware, same reasoning as audioplayer.c's play(): works with
   // anything MicroPython has mounted, and a bad path raises a normal
   // Python OSError.
@@ -746,15 +764,33 @@ static mp_obj_t audiorecorder_record(size_t n_args, const mp_obj_t *pos_args,
   self->last_error = 0;
   self->recording = true;
 
-  BaseType_t ok = xTaskCreatePinnedToCore(
+  // PSRAM-backed stack -- see modules/modssh/modssh.c's ssh_client_connect()
+  // for the full rationale (same pattern).
+  StackType_t *stack = heap_caps_malloc(RECORD_TASK_STACK_WORDS * sizeof(StackType_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (stack == NULL) {
+    stack = heap_caps_malloc(RECORD_TASK_STACK_WORDS * sizeof(StackType_t),
+                             MALLOC_CAP_8BIT);
+  }
+  if (stack == NULL) {
+    self->recording = false;
+    mp_raise_msg(&mp_type_RuntimeError,
+                 MP_ERROR_TEXT("failed to allocate recording task stack"));
+  }
+  self->stack = stack;
+
+  TaskHandle_t task = xTaskCreateStaticPinnedToCore(
       audio_record_task, "audiorecorder", RECORD_TASK_STACK_WORDS, self,
-      RECORD_TASK_PRIORITY, &self->task,
+      RECORD_TASK_PRIORITY, stack, &self->task_buf,
       1 /* APP CPU, same as audioplayer.c */);
-  if (ok != pdPASS) {
+  if (task == NULL) {
+    heap_caps_free(stack);
+    self->stack = NULL;
     self->recording = false;
     mp_raise_msg(&mp_type_RuntimeError,
                  MP_ERROR_TEXT("failed to start recording task"));
   }
+  self->task = task;
 
   return mp_const_none;
 }
@@ -797,7 +833,13 @@ static mp_obj_t audiorecorder_stop(mp_obj_t self_in) {
   audiorecorder_obj_t *self = MP_OBJ_TO_PTR(self_in);
   if (self->task != NULL) {
     self->stop_request = true;
-    xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000));
+    // Only free the PSRAM stack if the task actually confirmed exit --
+    // on a timeout it may still be running on it.
+    if (xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000)) == pdTRUE &&
+        self->stack != NULL) {
+      heap_caps_free(self->stack);
+      self->stack = NULL;
+    }
     self->task = NULL;
   }
   audiorecorder_finalize(self);
@@ -856,7 +898,13 @@ static mp_obj_t audiorecorder_deinit(mp_obj_t self_in) {
   audiorecorder_obj_t *self = MP_OBJ_TO_PTR(self_in);
   if (self->task != NULL) {
     self->stop_request = true;
-    xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000));
+    // Only free the PSRAM stack if the task actually confirmed exit --
+    // on a timeout it may still be running on it.
+    if (xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000)) == pdTRUE &&
+        self->stack != NULL) {
+      heap_caps_free(self->stack);
+      self->stack = NULL;
+    }
     self->task = NULL;
   }
   audiorecorder_finalize(self);

@@ -219,6 +219,14 @@ class Shell:
             print("Available commands:", ", ".join(sorted_apps))
             return True
 
+        if cmd_name == "mem":
+            import esp32
+            tbl = esp32.idf_heap_info(esp32.HEAP_DATA)
+            print(f"{'#':>2} {'Total':>7} {'Free':>7} {'Max':>7} {'Min':>7}")
+            for i, (total, free, largest, minfree) in enumerate(tbl):
+                print(f"{i:>2} {total/1024:>7.1f} {free/1024:>7.1f} {largest/1024:>7.1f} {minfree/1024:>7.1f}")
+            return True
+
         return False
 
     def _run_rc_file(self):

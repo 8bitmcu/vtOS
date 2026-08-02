@@ -5,6 +5,7 @@ add_library(usermod_modxml INTERFACE)
 # by our binding -- omitted to keep the module smaller.
 target_sources(usermod_modxml INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/modxml.c
+    ${CMAKE_CURRENT_LIST_DIR}/modxml_compat.c
     ${CMAKE_CURRENT_LIST_DIR}/mxml/mxml-attr.c
     ${CMAKE_CURRENT_LIST_DIR}/mxml/mxml-file.c
     ${CMAKE_CURRENT_LIST_DIR}/mxml/mxml-get.c

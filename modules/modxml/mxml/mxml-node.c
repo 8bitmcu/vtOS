@@ -9,6 +9,7 @@
 // information.
 //
 
+#include "modxml_compat.h"
 #include "mxml-private.h"
 
 

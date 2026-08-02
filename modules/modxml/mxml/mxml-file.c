@@ -12,6 +12,7 @@
 #ifndef _WIN32
 #  include <unistd.h>
 #endif // !_WIN32
+#include "modxml_compat.h"
 #include "mxml-private.h"
 
 

@@ -37,6 +37,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/idf_additions.h" // xTaskCreatePinnedToCore, see modssh.c
+#include "esp_heap_caps.h" // heap_caps_malloc(MALLOC_CAP_SPIRAM), see modules/modc2/modc2_alloc.c
 
 #include <wolfssh/ssh.h>
 #include <wolfssh/error.h>
@@ -101,6 +102,8 @@ typedef struct _sftp_client_obj_t {
   mp_obj_base_t base;
 
   TaskHandle_t task;
+  StaticTask_t task_buf; // xTaskCreateStaticPinnedToCore()'s control block
+  StackType_t *stack;    // PSRAM-backed, see sftp_client_connect()
   volatile sftp_state_t state;
   volatile bool stop_request;
 
@@ -521,6 +524,7 @@ static mp_obj_t sftp_client_make_new(const mp_obj_type_t *type, size_t n_args,
   sftp_client_obj_t *self = m_new_obj(sftp_client_obj_t);
   self->base.type = type;
   self->task = NULL;
+  self->stack = NULL;
   self->state = SFTP_STATE_IDLE;
   self->stop_request = false;
   self->sockfd = -1;
@@ -541,9 +545,20 @@ static mp_obj_t sftp_client_make_new(const mp_obj_type_t *type, size_t n_args,
 static mp_obj_t sftp_client_connect(size_t n_args, const mp_obj_t *args) {
   sftp_client_obj_t *self = MP_OBJ_TO_PTR(args[0]);
 
-  if (self->state == SFTP_STATE_CONNECTING || self->state == SFTP_STATE_CONNECTED) {
+  // self->task != NULL also guards here -- see modssh.c's ssh_client_connect()
+  // for the full rationale (same race window between sftp_task() setting
+  // state and it finishing its own cleanup/nulling self->task).
+  if (self->state == SFTP_STATE_CONNECTING || self->state == SFTP_STATE_CONNECTED ||
+      self->task != NULL) {
     mp_raise_msg(&mp_type_RuntimeError,
                 MP_ERROR_TEXT("already connecting or connected"));
+  }
+
+  // Reclaim the previous run's PSRAM stack, if any -- see modssh.c's
+  // identical reclaim for the full rationale.
+  if (self->stack != NULL) {
+    heap_caps_free(self->stack);
+    self->stack = NULL;
   }
 
   const char *host = mp_obj_str_get_str(args[1]);
@@ -563,15 +578,35 @@ static mp_obj_t sftp_client_connect(size_t n_args, const mp_obj_t *args) {
   self->last_error = 0;
   self->state = SFTP_STATE_CONNECTING;
 
-  BaseType_t ok = xTaskCreatePinnedToCore(
-      sftp_task, "sftpclient", SFTP_TASK_STACK_WORDS, self, SFTP_TASK_PRIORITY,
-      &self->task, 1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+  // PSRAM-backed stack -- see modssh.c's ssh_client_connect() for the
+  // full rationale (same pattern, same 64KB-per-session internal-RAM
+  // pressure this relieves).
+  StackType_t *stack = heap_caps_malloc(SFTP_TASK_STACK_WORDS * sizeof(StackType_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (stack == NULL) {
+    stack = heap_caps_malloc(SFTP_TASK_STACK_WORDS * sizeof(StackType_t),
+                             MALLOC_CAP_8BIT);
+  }
+  if (stack == NULL) {
+    self->state = SFTP_STATE_FAILED;
+    mp_raise_msg(&mp_type_RuntimeError,
+                MP_ERROR_TEXT("failed to allocate sftp task stack"));
+  }
+  self->stack = stack;
 
-  if (ok != pdPASS) {
+  TaskHandle_t task = xTaskCreateStaticPinnedToCore(
+      sftp_task, "sftpclient", SFTP_TASK_STACK_WORDS, self, SFTP_TASK_PRIORITY,
+      stack, &self->task_buf,
+      1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+
+  if (task == NULL) {
+    heap_caps_free(stack);
+    self->stack = NULL;
     self->state = SFTP_STATE_FAILED;
     mp_raise_msg(&mp_type_RuntimeError,
                 MP_ERROR_TEXT("failed to start sftp task"));
   }
+  self->task = task;
 
   return mp_const_none;
 }

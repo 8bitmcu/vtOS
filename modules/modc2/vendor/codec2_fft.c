@@ -5,6 +5,8 @@
  *      Author: danilo
  */
 
+#include "modc2_compat.h"
+
 #include "codec2_fft.h"
 
 #include "debug_alloc.h"

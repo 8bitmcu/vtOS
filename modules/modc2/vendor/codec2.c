@@ -26,6 +26,8 @@
   along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "modc2_compat.h"
+
 #include "codec2.h"
 
 #include <assert.h>

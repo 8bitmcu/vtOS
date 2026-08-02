@@ -77,6 +77,8 @@ typedef struct _audioplayer_obj_t {
 
   // task control
   TaskHandle_t task;
+  StaticTask_t task_buf; // xTaskCreateStaticPinnedToCore()'s control block
+  StackType_t *stack;    // PSRAM-backed, see audioplayer_play()
   SemaphoreHandle_t done_sem;
   volatile bool playing;
   volatile bool stop_request;
@@ -900,6 +902,7 @@ static mp_obj_t audioplayer_make_new(const mp_obj_type_t *type, size_t n_args,
   self->port_num = (i2s_port_t)parsed[ARG_i2s_num].u_int;
   self->tx_handle = NULL;
   self->task = NULL;
+  self->stack = NULL;
   self->playing = false;
   self->stop_request = false;
   self->paused = false;
@@ -966,6 +969,20 @@ static mp_obj_t audioplayer_play(mp_obj_t self_in, mp_obj_t filename_in) {
                  MP_ERROR_TEXT("already playing; call stop() first"));
   }
 
+  // Reclaim the previous track's PSRAM stack if play() is being called
+  // again without an intervening stop() (e.g. advancing a playlist after
+  // natural EOF). self->playing == false (just confirmed above) means
+  // audio_play_task() already reached its own "self->playing = false;
+  // xSemaphoreGive(done_sem)" exit sequence -- take done_sem (returns
+  // immediately, since it's already given) to synchronize with that
+  // before freeing the stack out from under it, same reasoning as
+  // audioplayer_stop()'s identical take just below.
+  if (self->stack != NULL) {
+    xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000));
+    heap_caps_free(self->stack);
+    self->stack = NULL;
+  }
+
   mp_obj_t file;
   if (mp_obj_is_str(filename_in)) {
     // Open via MicroPython's own open(), not fopen() -- this is what
@@ -1009,16 +1026,34 @@ static mp_obj_t audioplayer_play(mp_obj_t self_in, mp_obj_t filename_in) {
   self->stop_request = false;
   self->playing = true;
 
-  BaseType_t ok = xTaskCreatePinnedToCore(
+  // PSRAM-backed stack -- see modules/modssh/modssh.c's ssh_client_connect()
+  // for the full rationale (same pattern).
+  StackType_t *stack = heap_caps_malloc(AUDIO_TASK_STACK_WORDS * sizeof(StackType_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (stack == NULL) {
+    stack = heap_caps_malloc(AUDIO_TASK_STACK_WORDS * sizeof(StackType_t),
+                             MALLOC_CAP_8BIT);
+  }
+  if (stack == NULL) {
+    self->playing = false;
+    mp_raise_msg(&mp_type_RuntimeError,
+                 MP_ERROR_TEXT("failed to allocate playback task stack"));
+  }
+  self->stack = stack;
+
+  TaskHandle_t task = xTaskCreateStaticPinnedToCore(
       audio_play_task, "audioplayer", AUDIO_TASK_STACK_WORDS, self,
-      AUDIO_TASK_PRIORITY, &self->task,
+      AUDIO_TASK_PRIORITY, stack, &self->task_buf,
       1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
 
-  if (ok != pdPASS) {
+  if (task == NULL) {
+    heap_caps_free(stack);
+    self->stack = NULL;
     self->playing = false;
     mp_raise_msg(&mp_type_RuntimeError,
                  MP_ERROR_TEXT("failed to start playback task"));
   }
+  self->task = task;
 
   return mp_const_none;
 }
@@ -1185,7 +1220,13 @@ static mp_obj_t audioplayer_stop(mp_obj_t self_in) {
   audioplayer_obj_t *self = MP_OBJ_TO_PTR(self_in);
   if (self->playing) {
     self->stop_request = true;
-    xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000));
+    // Only free the PSRAM stack if the task actually confirmed exit --
+    // on a timeout it may still be running on it.
+    if (xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000)) == pdTRUE &&
+        self->stack != NULL) {
+      heap_caps_free(self->stack);
+      self->stack = NULL;
+    }
   }
   audioplayer_close_file(self);
   return mp_const_none;
@@ -1226,7 +1267,13 @@ static mp_obj_t audioplayer_deinit(mp_obj_t self_in) {
   audioplayer_obj_t *self = MP_OBJ_TO_PTR(self_in);
   if (self->playing) {
     self->stop_request = true;
-    xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000));
+    // Only free the PSRAM stack if the task actually confirmed exit --
+    // on a timeout it may still be running on it.
+    if (xSemaphoreTake(self->done_sem, pdMS_TO_TICKS(2000)) == pdTRUE &&
+        self->stack != NULL) {
+      heap_caps_free(self->stack);
+      self->stack = NULL;
+    }
   }
   audioplayer_close_file(self);
   rb_deinit(&self->rb);

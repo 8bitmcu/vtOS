@@ -55,6 +55,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h" // xTaskCreatePinnedToCore, see modssh.c
+#include "esp_heap_caps.h" // heap_caps_malloc(MALLOC_CAP_SPIRAM), see modules/modc2/modc2_alloc.c
 
 #include "ring_buf.h"
 
@@ -102,6 +103,8 @@ typedef struct _sshd_server_obj_t {
   mp_obj_base_t base;
 
   TaskHandle_t task;
+  StaticTask_t task_buf; // xTaskCreateStaticPinnedToCore()'s control block
+  StackType_t *stack;    // PSRAM-backed, see sshd_server_start()
   volatile sshd_state_t state;
   volatile bool stop_request;
 
@@ -474,6 +477,7 @@ static mp_obj_t sshd_server_make_new(const mp_obj_type_t *type, size_t n_args,
   self->port = mp_obj_get_int(args[4]);
 
   self->task = NULL;
+  self->stack = NULL;
   self->state = SSHD_STATE_IDLE;
   self->stop_request = false;
   self->listen_fd = -1;
@@ -496,6 +500,15 @@ static mp_obj_t sshd_server_start(mp_obj_t self_in) {
     mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("already started"));
   }
 
+  // Reclaim the previous run's PSRAM stack, if any -- self->task == NULL
+  // (just confirmed above) means that task already reached its own
+  // "self->task = NULL" line and won't touch this memory again, same
+  // reasoning as modsftpd.c's session-slot reclaim.
+  if (self->stack != NULL) {
+    heap_caps_free(self->stack);
+    self->stack = NULL;
+  }
+
   self->stop_request = false;
   self->last_error = 0;
   self->listen_fd = -1;
@@ -513,14 +526,32 @@ static mp_obj_t sshd_server_start(mp_obj_t self_in) {
     mp_call_method_n_kw(1, 0, dest);
   }
 
-  BaseType_t ok = xTaskCreatePinnedToCore(
-      sshd_task, "sshd", SSHD_TASK_STACK_WORDS, self, SSHD_TASK_PRIORITY,
-      &self->task, 1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+  // PSRAM-backed stack -- see modssh.c's ssh_client_connect() for the
+  // full rationale.
+  StackType_t *stack = heap_caps_malloc(SSHD_TASK_STACK_WORDS * sizeof(StackType_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (stack == NULL) {
+    stack = heap_caps_malloc(SSHD_TASK_STACK_WORDS * sizeof(StackType_t),
+                             MALLOC_CAP_8BIT);
+  }
+  if (stack == NULL) {
+    mp_raise_msg(&mp_type_RuntimeError,
+                MP_ERROR_TEXT("failed to allocate sshd task stack"));
+  }
+  self->stack = stack;
 
-  if (ok != pdPASS) {
+  TaskHandle_t task = xTaskCreateStaticPinnedToCore(
+      sshd_task, "sshd", SSHD_TASK_STACK_WORDS, self, SSHD_TASK_PRIORITY,
+      stack, &self->task_buf,
+      1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+
+  if (task == NULL) {
+    heap_caps_free(stack);
+    self->stack = NULL;
     mp_raise_msg(&mp_type_RuntimeError,
                 MP_ERROR_TEXT("failed to start sshd task"));
   }
+  self->task = task;
 
   return mp_const_none;
 }

@@ -27,6 +27,8 @@
 
 */
 
+#include "modc2_compat.h"
+
 #include "mbest.h"
 
 #include <assert.h>

@@ -25,6 +25,8 @@
   along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "modc2_compat.h"
+
 #include "nlp.h"
 
 #include "codec2_fft.h"

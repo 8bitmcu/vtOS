@@ -39,6 +39,8 @@
 #include "py/builtin.h"
 #include "py/mphal.h"
 
+#include "esp_heap_caps.h" // heap_caps_malloc(MALLOC_CAP_SPIRAM), see modules/modc2/modc2_alloc.c
+
 // Fix for MicroPython > 1.21 https://github.com/ricksorensen
 #if MICROPY_VERSION_MAJOR >= 1 && MICROPY_VERSION_MINOR > 21
 #include "extmod/modmachine.h"
@@ -2504,7 +2506,15 @@ mp_obj_t st7789_ST7789_make_new(const mp_obj_type_t *type,
     self->buffer_size = args[ARG_buffer_size].u_int;
 
     if (self->buffer_size) {
-        self->i2c_buffer = m_malloc(self->buffer_size);
+        self->i2c_buffer = heap_caps_malloc(self->buffer_size,
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (self->i2c_buffer == NULL) {
+            self->i2c_buffer = heap_caps_malloc(self->buffer_size, MALLOC_CAP_8BIT);
+        }
+        if (self->i2c_buffer == NULL) {
+            mp_raise_msg(&mp_type_MemoryError,
+                        MP_ERROR_TEXT("failed to allocate display buffer"));
+        }
     } else {
         self->i2c_buffer = NULL;
     }

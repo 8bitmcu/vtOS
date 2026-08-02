@@ -27,6 +27,7 @@
 // xTaskCreatePinnedToCore moved here in ESP-IDF 5.3+ (upstream FreeRTOS SMP
 // merge); see modules/tdeck_i2s/audioplayer.c for the same pattern.
 #include "freertos/idf_additions.h"
+#include "esp_heap_caps.h" // heap_caps_malloc(MALLOC_CAP_SPIRAM), see modules/modc2/modc2_alloc.c
 
 #include "ring_buf.h"
 
@@ -76,6 +77,8 @@ typedef struct _ssh_client_obj_t {
   mp_obj_base_t base;
 
   TaskHandle_t task;
+  StaticTask_t task_buf; // xTaskCreateStaticPinnedToCore()'s control block
+  StackType_t *stack;    // PSRAM-backed, see ssh_client_connect()
   volatile ssh_state_t state;
   volatile bool stop_request;
 
@@ -395,6 +398,7 @@ static mp_obj_t ssh_client_make_new(const mp_obj_type_t *type, size_t n_args,
   ssh_client_obj_t *self = m_new_obj(ssh_client_obj_t);
   self->base.type = type;
   self->task = NULL;
+  self->stack = NULL;
   self->state = SSH_STATE_IDLE;
   self->stop_request = false;
   self->sockfd = -1;
@@ -415,9 +419,25 @@ static mp_obj_t ssh_client_make_new(const mp_obj_type_t *type, size_t n_args,
 static mp_obj_t ssh_client_connect(size_t n_args, const mp_obj_t *args) {
   ssh_client_obj_t *self = MP_OBJ_TO_PTR(args[0]);
 
-  if (self->state == SSH_STATE_CONNECTING || self->state == SSH_STATE_CONNECTED) {
+  // self->task != NULL also guards here (not just state): ssh_task() sets
+  // state to FAILED/CLOSED a few lines before its own cleanup (closing
+  // ctx/ssh/sockfd) finishes and self->task is nulled -- without this, a
+  // connect() landing in that narrow window would start a second task
+  // while the first is still tearing down the very fields this one is
+  // about to reinitialize.
+  if (self->state == SSH_STATE_CONNECTING || self->state == SSH_STATE_CONNECTED ||
+      self->task != NULL) {
     mp_raise_msg(&mp_type_RuntimeError,
                 MP_ERROR_TEXT("already connecting or connected"));
+  }
+
+  // Reclaim the previous run's PSRAM stack, if any -- self->task == NULL
+  // (just confirmed above) means that task already reached its own
+  // "self->task = NULL" line and won't touch this memory again, same
+  // reasoning as modsftpd.c's session-slot reclaim.
+  if (self->stack != NULL) {
+    heap_caps_free(self->stack);
+    self->stack = NULL;
   }
 
   const char *host = mp_obj_str_get_str(args[1]);
@@ -441,15 +461,37 @@ static mp_obj_t ssh_client_connect(size_t n_args, const mp_obj_t *args) {
   self->last_auth_type = -1;
   self->state = SSH_STATE_CONNECTING;
 
-  BaseType_t ok = xTaskCreatePinnedToCore(
-      ssh_task, "sshclient", SSH_TASK_STACK_WORDS, self, SSH_TASK_PRIORITY,
-      &self->task, 1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+  // Stack allocated from PSRAM, falling back to internal RAM if PSRAM's
+  // exhausted -- same pattern as modsftpd.c's per-session task stacks.
+  // 64KB of internal RAM per SSH session was a real squeeze on this
+  // board's scarce internal pool (see mpconfigboard.h's WiFi/BT headroom
+  // investigation).
+  StackType_t *stack = heap_caps_malloc(SSH_TASK_STACK_WORDS * sizeof(StackType_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (stack == NULL) {
+    stack = heap_caps_malloc(SSH_TASK_STACK_WORDS * sizeof(StackType_t),
+                             MALLOC_CAP_8BIT);
+  }
+  if (stack == NULL) {
+    self->state = SSH_STATE_FAILED;
+    mp_raise_msg(&mp_type_RuntimeError,
+                MP_ERROR_TEXT("failed to allocate ssh task stack"));
+  }
+  self->stack = stack;
 
-  if (ok != pdPASS) {
+  TaskHandle_t task = xTaskCreateStaticPinnedToCore(
+      ssh_task, "sshclient", SSH_TASK_STACK_WORDS, self, SSH_TASK_PRIORITY,
+      stack, &self->task_buf,
+      1 /* APP CPU -- leave PRO CPU/core 0 for MicroPython */);
+
+  if (task == NULL) {
+    heap_caps_free(stack);
+    self->stack = NULL;
     self->state = SSH_STATE_FAILED;
     mp_raise_msg(&mp_type_RuntimeError,
                 MP_ERROR_TEXT("failed to start ssh task"));
   }
+  self->task = task;
 
   return mp_const_none;
 }
